@@ -1,0 +1,501 @@
+Order_ID,SKU,Revenue,Province,Actual_Weight_kg,Length_cm,Width_cm,Height_cm,Billed_Shipping_Cost_ZAR
+SA-1001,Running Shorts,204.0,Gauteng,1.5,57,16,53,205.91
+SA-1002,Hydration Bottle,142.04,Western Cape,0.63,23,24,42,182.34
+SA-1003,Hydration Bottle,158.83,KwaZulu-Natal,2.95,24,38,47,127.29
+SA-1004,Cotton T-Shirt,262.82,Gauteng,2.4,27,19,23,242.73
+SA-1005,Multivitamin Pack,169.44,Western Cape,2.12,32,48,26,217.21
+SA-1006,Compression Top,459.87,Northern Cape,2.2,45,28,50,185.15
+SA-1007,Resistance Bands,185.6,KwaZulu-Natal,0.71,24,59,28,247.49
+SA-1008,Whey Protein 1kg,752.27,Western Cape,2.54,33,20,33,140.4
+SA-1009,Creatine Monohydrate,389.36,KwaZulu-Natal,0.82,50,20,44,203.95
+SA-1010,Denim Jacket,976.36,Gauteng,4.66,54,45,24,196.38
+SA-1011,Performance Hoodie,590.62,Gauteng,1.92,27,14,23,235.23
+SA-1012,Meal Replacement Shake,561.91,Gauteng,3.45,35,51,39,104.29
+SA-1013,Sports Bra,310.66,KwaZulu-Natal,1.68,47,37,47,147.9
+SA-1014,Whey Protein 1kg,798.06,Gauteng,2.72,58,13,17,105.98
+SA-1015,Denim Jacket,1174.25,Western Cape,0.79,34,48,39,169.95
+SA-1016,Hydration Bottle,258.12,Gauteng,3.74,53,44,58,125.36
+SA-1017,Multivitamin Pack,171.31,Western Cape,2.54,56,56,26,245.22
+SA-1018,Denim Jacket,1003.61,Gauteng,3.31,50,42,48,113.81
+SA-1019,Resistance Bands,213.38,Western Cape,4.0,43,10,48,135.11
+SA-1020,Cotton T-Shirt,165.78,Western Cape,4.93,29,25,13,120.95
+SA-1021,Meal Replacement Shake,583.08,Gauteng,2.69,14,58,44,210.19
+SA-1022,Sports Bra,413.94,North West,1.24,43,48,37,243.94
+SA-1023,Hydration Bottle,242.29,KwaZulu-Natal,3.71,35,52,51,143.48
+SA-1024,Canvas Sneakers,624.74,Gauteng,0.79,11,47,45,119.12
+SA-1025,Whey Protein 1kg,451.52,KwaZulu-Natal,0.76,14,12,31,92.05
+SA-1026,Whey Protein 1kg,546.47,Western Cape,2.93,56,46,46,160.35
+SA-1027,Puffer Vest,1083.5,Gauteng,0.94,37,32,37,149.89
+SA-1028,Performance Hoodie,768.35,Northern Cape,0.94,35,56,31,216.1
+SA-1029,Running Shorts,248.73,Gauteng,2.52,37,21,27,158.65
+SA-1030,Yoga Leggings,504.1,Limpopo,2.98,13,51,44,222.12
+SA-1031,Yoga Leggings,673.23,Limpopo,1.25,41,40,23,226.99
+SA-1032,Performance Hoodie,564.85,Gauteng,2.26,60,60,39,128.49
+SA-1033,Hydration Bottle,228.28,Western Cape,1.35,23,13,47,205.08
+SA-1034,Performance Hoodie,798.19,Gauteng,3.13,42,43,20,89.67
+SA-1035,Canvas Sneakers,439.06,Gauteng,3.18,53,25,35,100.38
+SA-1036,Meal Replacement Shake,372.86,KwaZulu-Natal,3.29,36,52,47,176.09
+SA-1037,Multivitamin Pack,335.94,Gauteng,3.72,25,26,35,102.25
+SA-1038,Omega-3 Capsules,206.73,Mpumalanga,4.71,10,39,49,249.74
+SA-1039,Running Shorts,213.65,Gauteng,1.69,32,14,25,142.82
+SA-1040,Denim Jacket,961.91,KwaZulu-Natal,1.86,51,43,10,193.54
+SA-1041,Hydration Bottle,173.91,KwaZulu-Natal,4.73,18,26,17,231.25
+SA-1042,Hydration Bottle,152.32,Gauteng,1.45,31,23,53,187.82
+SA-1043,Creatine Monohydrate,350.08,Gauteng,4.59,13,15,50,152.01
+SA-1044,Creatine Monohydrate,257.82,Western Cape,1.09,26,20,57,155.11
+SA-1045,Trail Socks,135.09,Gauteng,4.75,54,19,44,86.12
+SA-1046,Resistance Bands,186.38,Gauteng,1.07,29,33,60,245.27
+SA-1047,Performance Hoodie,858.57,Gauteng,1.62,16,32,59,175.18
+SA-1048,Trail Socks,176.38,Eastern Cape,4.67,25,20,21,229.84
+SA-1049,Cotton T-Shirt,175.9,Mpumalanga,4.02,36,52,57,217.83
+SA-1050,Creatine Monohydrate,280.84,KwaZulu-Natal,2.22,12,40,24,113.93
+SA-1051,Compression Top,403.9,Free State,4.42,24,11,52,112.83
+SA-1052,Multivitamin Pack,204.72,Gauteng,3.98,32,51,42,147.95
+SA-1053,Hydration Bottle,178.67,Gauteng,4.45,26,21,47,243.63
+SA-1054,Creatine Monohydrate,256.65,KwaZulu-Natal,2.06,60,30,37,183.06
+SA-1055,Canvas Sneakers,456.82,Mpumalanga,1.36,12,55,37,80.29
+SA-1056,Hydration Bottle,232.03,North West,3.82,22,33,37,91.9
+SA-1057,Multivitamin Pack,273.63,KwaZulu-Natal,1.06,29,42,29,193.37
+SA-1058,Multivitamin Pack,229.48,Gauteng,1.07,36,52,34,195.14
+SA-1059,Denim Jacket,1068.31,Gauteng,2.97,10,29,28,115.73
+SA-1060,Meal Replacement Shake,481.0,Western Cape,2.49,53,23,42,160.44
+SA-1061,Denim Jacket,1094.31,Gauteng,3.49,49,31,15,219.13
+SA-1062,Whey Protein 1kg,684.48,Gauteng,1.4,11,12,25,247.27
+SA-1063,BCAA Powder,461.43,Gauteng,2.36,50,46,22,202.12
+SA-1064,Gym Gloves,223.16,Gauteng,3.45,10,58,59,230.53
+SA-1065,Trail Socks,100.88,Free State,3.63,39,13,45,122.36
+SA-1066,Running Shorts,290.29,Free State,3.5,45,48,30,241.51
+SA-1067,Compression Top,482.8,Eastern Cape,2.77,45,38,20,206.42
+SA-1068,Puffer Vest,869.04,Eastern Cape,4.28,27,59,59,168.62
+SA-1069,Whey Protein 1kg,545.11,Gauteng,1.79,27,31,30,231.81
+SA-1070,Yoga Leggings,397.43,Gauteng,3.62,55,23,14,150.53
+SA-1071,Multivitamin Pack,257.52,Western Cape,1.43,36,34,59,179.29
+SA-1072,Cotton T-Shirt,277.51,Eastern Cape,2.21,10,32,29,208.09
+SA-1073,Trail Socks,132.82,Eastern Cape,4.1,24,41,24,126.4
+SA-1074,Puffer Vest,616.41,Western Cape,3.56,35,56,20,222.89
+SA-1075,Sports Bra,494.18,Western Cape,4.58,47,46,52,84.61
+SA-1076,Trail Socks,92.57,Western Cape,0.73,34,30,23,157.3
+SA-1077,Multivitamin Pack,301.25,Western Cape,3.88,36,26,15,159.95
+SA-1078,Hydration Bottle,136.81,North West,1.51,14,59,51,86.84
+SA-1079,Cotton T-Shirt,291.44,Gauteng,0.59,19,25,18,160.51
+SA-1080,Running Shorts,311.79,Gauteng,3.65,59,33,20,183.0
+SA-1081,Running Shorts,354.56,Gauteng,1.9,47,11,29,177.89
+SA-1082,Gym Gloves,208.5,Eastern Cape,0.84,54,50,25,97.32
+SA-1083,Omega-3 Capsules,273.55,KwaZulu-Natal,1.04,46,60,12,139.02
+SA-1084,Trail Socks,145.15,Gauteng,3.41,10,36,41,97.94
+SA-1085,Resistance Bands,194.34,Free State,3.68,37,21,56,168.7
+SA-1086,Creatine Monohydrate,372.18,Mpumalanga,3.99,39,37,56,180.72
+SA-1087,Multivitamin Pack,319.34,Free State,0.89,38,25,58,159.0
+SA-1088,BCAA Powder,416.05,Western Cape,2.72,30,21,41,116.06
+SA-1089,Creatine Monohydrate,317.07,Limpopo,3.66,27,45,10,167.83
+SA-1090,Chino Pants,433.25,Eastern Cape,2.7,58,25,54,160.94
+SA-1091,Puffer Vest,867.9,Gauteng,1.82,35,54,25,132.06
+SA-1092,Meal Replacement Shake,409.71,KwaZulu-Natal,2.05,57,45,31,139.81
+SA-1093,Compression Top,380.27,Gauteng,1.04,22,30,17,206.29
+SA-1094,Denim Jacket,813.92,Eastern Cape,1.74,47,58,43,181.45
+SA-1095,Running Shorts,365.53,Gauteng,2.12,29,10,55,170.8
+SA-1096,Creatine Monohydrate,258.1,Gauteng,1.81,18,50,58,163.45
+SA-1097,Cotton T-Shirt,235.11,Western Cape,2.48,21,13,26,239.98
+SA-1098,Puffer Vest,667.45,Gauteng,2.71,46,50,53,89.11
+SA-1099,Sports Bra,451.79,North West,0.88,25,17,45,209.96
+SA-1100,BCAA Powder,398.03,KwaZulu-Natal,3.99,34,38,38,130.55
+SA-1101,Meal Replacement Shake,596.01,Gauteng,3.29,49,57,16,241.09
+SA-1102,Chino Pants,649.21,Gauteng,0.87,25,21,45,92.76
+SA-1103,Cotton T-Shirt,210.28,KwaZulu-Natal,2.61,12,24,28,200.18
+SA-1104,Compression Top,320.35,Gauteng,1.69,60,50,47,192.4
+SA-1105,Chino Pants,569.06,KwaZulu-Natal,3.41,27,19,14,90.14
+SA-1106,Omega-3 Capsules,230.16,Free State,4.65,38,17,39,197.08
+SA-1107,Gym Gloves,290.4,Western Cape,2.72,15,48,12,231.2
+SA-1108,Multivitamin Pack,269.74,Gauteng,1.53,53,46,47,241.63
+SA-1109,Creatine Monohydrate,364.25,Eastern Cape,1.29,43,51,38,235.73
+SA-1110,Denim Jacket,1297.17,Western Cape,4.16,15,40,32,149.42
+SA-1111,Multivitamin Pack,283.03,Limpopo,1.98,54,41,28,192.64
+SA-1112,Gym Gloves,271.03,KwaZulu-Natal,2.55,30,26,30,99.71
+SA-1113,Gym Gloves,278.74,Free State,0.51,44,39,36,89.21
+SA-1114,Canvas Sneakers,579.89,Eastern Cape,3.31,58,13,23,125.4
+SA-1115,Sports Bra,480.92,Western Cape,3.64,17,11,50,183.51
+SA-1116,Whey Protein 1kg,697.42,Gauteng,0.56,36,15,24,248.68
+SA-1117,Running Shorts,291.29,Gauteng,4.24,41,55,28,166.51
+SA-1118,Creatine Monohydrate,332.1,Western Cape,2.62,39,45,19,145.21
+SA-1119,BCAA Powder,376.06,Limpopo,4.39,27,59,60,225.25
+SA-1120,Multivitamin Pack,335.85,Western Cape,4.19,28,56,29,222.37
+SA-1121,Meal Replacement Shake,598.67,Western Cape,1.17,44,40,32,136.51
+SA-1122,Hydration Bottle,185.58,North West,4.41,54,25,46,145.11
+SA-1123,Trail Socks,83.36,Eastern Cape,3.67,34,34,52,214.71
+SA-1124,Sports Bra,372.83,Gauteng,2.76,47,31,16,228.61
+SA-1125,Compression Top,328.91,Mpumalanga,0.57,19,36,51,244.89
+SA-1126,Yoga Leggings,513.32,North West,2.02,54,35,51,93.65
+SA-1127,Multivitamin Pack,319.47,Limpopo,2.21,30,50,55,230.86
+SA-1128,Puffer Vest,1122.43,Gauteng,0.81,50,53,28,249.56
+SA-1129,Yoga Leggings,500.89,Gauteng,3.35,16,38,20,197.98
+SA-1130,Cotton T-Shirt,155.9,Free State,1.82,33,37,19,121.51
+SA-1131,Trail Socks,135.59,Free State,1.26,15,49,34,185.35
+SA-1132,Whey Protein 1kg,623.18,KwaZulu-Natal,1.54,50,26,39,123.41
+SA-1133,Cotton T-Shirt,283.84,Western Cape,1.79,44,20,14,155.09
+SA-1134,Resistance Bands,247.15,Gauteng,4.83,54,26,39,223.7
+SA-1135,Chino Pants,798.75,Limpopo,0.98,34,46,32,177.72
+SA-1136,Omega-3 Capsules,132.73,Free State,2.28,10,46,53,212.31
+SA-1137,Performance Hoodie,863.25,Eastern Cape,4.25,28,59,24,183.2
+SA-1138,Resistance Bands,131.85,Gauteng,1.63,58,56,59,192.06
+SA-1139,Sports Bra,406.06,Mpumalanga,3.41,29,60,38,85.67
+SA-1140,Resistance Bands,208.85,Gauteng,1.83,57,36,21,114.14
+SA-1141,Hydration Bottle,260.47,Western Cape,2.76,27,20,26,235.39
+SA-1142,Puffer Vest,1179.43,Gauteng,4.42,17,39,14,103.93
+SA-1143,Whey Protein 1kg,750.05,Eastern Cape,4.91,45,33,15,214.42
+SA-1144,Cotton T-Shirt,188.67,Gauteng,2.16,57,53,26,179.38
+SA-1145,Resistance Bands,115.25,Gauteng,0.61,45,30,49,117.63
+SA-1146,Yoga Leggings,571.39,Western Cape,3.65,51,36,17,103.76
+SA-1147,Performance Hoodie,620.75,Western Cape,0.94,44,18,34,157.12
+SA-1148,Hydration Bottle,191.87,Eastern Cape,1.2,36,51,16,221.73
+SA-1149,BCAA Powder,351.03,North West,0.65,33,23,38,155.6
+SA-1150,Whey Protein 1kg,748.41,Gauteng,3.59,44,51,32,90.29
+SA-1151,Creatine Monohydrate,286.96,Gauteng,4.32,39,15,52,116.06
+SA-1152,BCAA Powder,491.77,Gauteng,2.0,18,60,46,114.88
+SA-1153,Hydration Bottle,160.07,Gauteng,4.41,31,59,19,214.07
+SA-1154,BCAA Powder,249.71,Limpopo,1.15,18,44,26,215.75
+SA-1155,Running Shorts,331.21,Gauteng,0.57,60,60,25,180.1
+SA-1156,Cotton T-Shirt,175.14,Gauteng,3.84,43,17,57,90.8
+SA-1157,Compression Top,532.41,Western Cape,0.99,42,24,49,87.37
+SA-1158,Canvas Sneakers,549.82,KwaZulu-Natal,0.64,40,35,37,196.64
+SA-1159,Puffer Vest,1026.44,Western Cape,4.55,30,48,19,91.17
+SA-1160,Creatine Monohydrate,373.86,KwaZulu-Natal,3.7,34,48,43,130.13
+SA-1161,Canvas Sneakers,701.71,Gauteng,3.66,51,51,59,173.73
+SA-1162,Chino Pants,571.03,Limpopo,2.36,39,35,36,204.03
+SA-1163,Multivitamin Pack,234.35,KwaZulu-Natal,2.18,19,53,40,91.41
+SA-1164,Yoga Leggings,381.63,Gauteng,3.82,18,45,13,179.7
+SA-1165,Hydration Bottle,213.25,KwaZulu-Natal,2.35,52,58,37,227.58
+SA-1166,Performance Hoodie,886.36,KwaZulu-Natal,2.08,46,42,23,106.3
+SA-1167,Puffer Vest,733.55,Gauteng,4.3,33,17,58,127.36
+SA-1168,Whey Protein 1kg,731.53,Limpopo,4.89,49,49,53,189.26
+SA-1169,Cotton T-Shirt,240.35,KwaZulu-Natal,3.62,11,21,27,199.46
+SA-1170,Omega-3 Capsules,285.66,Western Cape,1.32,19,46,52,148.13
+SA-1171,Sports Bra,434.24,Northern Cape,0.91,43,23,34,151.37
+SA-1172,Multivitamin Pack,180.48,Gauteng,1.96,46,48,15,230.17
+SA-1173,Sports Bra,288.35,KwaZulu-Natal,3.53,27,38,52,152.08
+SA-1174,BCAA Powder,359.51,Gauteng,3.9,17,32,37,98.85
+SA-1175,Meal Replacement Shake,444.99,KwaZulu-Natal,0.7,35,48,13,81.31
+SA-1176,Omega-3 Capsules,289.71,Eastern Cape,3.94,28,30,17,81.31
+SA-1177,Trail Socks,96.57,Western Cape,3.67,42,45,52,217.05
+SA-1178,Yoga Leggings,487.97,Eastern Cape,2.46,39,14,30,177.88
+SA-1179,Meal Replacement Shake,420.33,KwaZulu-Natal,1.8,35,11,30,109.22
+SA-1180,BCAA Powder,364.02,KwaZulu-Natal,2.13,37,16,25,154.07
+SA-1181,Gym Gloves,227.59,Western Cape,1.9,31,24,31,212.45
+SA-1182,Yoga Leggings,527.67,Gauteng,2.79,59,32,32,203.65
+SA-1183,Sports Bra,308.07,Gauteng,1.39,48,19,58,209.06
+SA-1184,Yoga Leggings,411.0,Eastern Cape,2.72,58,46,58,178.51
+SA-1185,Meal Replacement Shake,491.9,Northern Cape,1.95,50,30,19,154.76
+SA-1186,Puffer Vest,864.32,Gauteng,1.74,13,32,42,92.61
+SA-1187,Compression Top,434.57,Gauteng,4.24,14,51,15,184.55
+SA-1188,Canvas Sneakers,591.24,KwaZulu-Natal,4.79,57,12,38,234.54
+SA-1189,Meal Replacement Shake,494.55,Western Cape,2.64,19,13,38,97.6
+SA-1190,Multivitamin Pack,345.48,Gauteng,3.41,12,25,55,154.42
+SA-1191,Compression Top,456.22,KwaZulu-Natal,2.14,28,34,36,211.66
+SA-1192,BCAA Powder,262.09,KwaZulu-Natal,2.01,31,16,45,195.32
+SA-1193,Omega-3 Capsules,171.84,Limpopo,4.84,48,19,31,93.86
+SA-1194,Sports Bra,478.19,Gauteng,3.45,52,35,18,181.16
+SA-1195,Yoga Leggings,457.35,Western Cape,4.06,18,52,54,220.92
+SA-1196,Canvas Sneakers,445.73,KwaZulu-Natal,2.79,11,33,29,110.64
+SA-1197,Chino Pants,535.69,Eastern Cape,1.36,18,19,14,130.28
+SA-1198,Running Shorts,300.54,Western Cape,3.82,43,12,52,137.25
+SA-1199,BCAA Powder,281.76,Western Cape,1.23,54,59,49,217.54
+SA-1200,Denim Jacket,1131.71,Gauteng,2.14,56,25,38,183.8
+SA-1201,Compression Top,369.2,Gauteng,4.85,60,40,22,142.53
+SA-1202,Meal Replacement Shake,594.33,Western Cape,1.77,34,42,43,151.17
+SA-1203,Denim Jacket,1189.13,Free State,1.12,26,13,51,161.7
+SA-1204,Resistance Bands,182.18,Gauteng,4.31,17,28,15,209.73
+SA-1205,Creatine Monohydrate,338.86,Western Cape,4.24,15,24,38,230.39
+SA-1206,Cotton T-Shirt,211.23,Western Cape,2.18,34,15,33,118.17
+SA-1207,Multivitamin Pack,335.17,Free State,3.42,60,19,18,86.51
+SA-1208,Puffer Vest,1016.64,Gauteng,3.67,38,49,10,234.0
+SA-1209,Cotton T-Shirt,187.39,Free State,2.97,56,48,43,151.95
+SA-1210,Omega-3 Capsules,169.4,Gauteng,1.57,50,60,49,157.71
+SA-1211,Running Shorts,366.34,Western Cape,2.91,50,42,46,121.13
+SA-1212,Sports Bra,321.82,Gauteng,2.09,46,36,21,192.94
+SA-1213,Yoga Leggings,532.22,Western Cape,4.79,44,42,60,248.02
+SA-1214,Hydration Bottle,132.05,Limpopo,0.7,34,33,26,207.04
+SA-1215,Resistance Bands,217.28,Western Cape,3.8,50,16,59,178.92
+SA-1216,Multivitamin Pack,175.68,Western Cape,2.02,51,21,59,196.4
+SA-1217,Puffer Vest,978.04,Free State,0.78,59,39,12,129.89
+SA-1218,Performance Hoodie,815.44,Limpopo,1.92,29,42,35,248.15
+SA-1219,Hydration Bottle,200.01,Gauteng,3.41,28,32,59,88.13
+SA-1220,Multivitamin Pack,203.64,Free State,2.47,35,57,38,232.09
+SA-1221,Gym Gloves,199.86,Gauteng,3.61,33,43,27,216.2
+SA-1222,Trail Socks,86.89,KwaZulu-Natal,4.2,44,28,30,97.44
+SA-1223,Multivitamin Pack,281.18,Gauteng,3.21,37,20,54,155.46
+SA-1224,Compression Top,311.71,Limpopo,2.09,37,27,50,246.6
+SA-1225,Performance Hoodie,529.02,KwaZulu-Natal,2.13,57,53,20,241.97
+SA-1226,Sports Bra,461.17,KwaZulu-Natal,2.47,18,14,25,212.35
+SA-1227,Resistance Bands,153.32,North West,0.65,19,53,38,241.3
+SA-1228,Resistance Bands,165.59,Gauteng,1.12,33,35,30,190.43
+SA-1229,Whey Protein 1kg,785.18,Gauteng,1.34,43,34,45,100.02
+SA-1230,Creatine Monohydrate,389.81,Gauteng,3.25,54,41,22,100.85
+SA-1231,Yoga Leggings,507.21,Mpumalanga,2.5,15,53,30,193.53
+SA-1232,Yoga Leggings,541.5,Gauteng,1.85,20,55,55,237.65
+SA-1233,Denim Jacket,1175.22,Western Cape,1.05,22,60,18,120.25
+SA-1234,Puffer Vest,614.77,KwaZulu-Natal,2.16,45,18,49,230.32
+SA-1235,Yoga Leggings,457.25,Northern Cape,3.73,43,36,59,149.6
+SA-1236,Meal Replacement Shake,321.13,Northern Cape,3.39,38,39,53,167.95
+SA-1237,Sports Bra,468.49,Eastern Cape,3.38,21,59,18,153.55
+SA-1238,Performance Hoodie,831.56,Western Cape,1.87,20,30,55,118.33
+SA-1239,Canvas Sneakers,846.46,Limpopo,1.63,50,45,27,101.28
+SA-1240,Omega-3 Capsules,233.45,Gauteng,3.38,47,47,19,109.1
+SA-1241,BCAA Powder,429.16,KwaZulu-Natal,4.29,46,12,11,93.81
+SA-1242,Meal Replacement Shake,378.4,Gauteng,3.07,49,50,11,164.67
+SA-1243,Hydration Bottle,172.45,North West,2.67,53,35,29,157.1
+SA-1244,Performance Hoodie,562.23,Western Cape,2.59,31,48,19,133.14
+SA-1245,Multivitamin Pack,295.84,Limpopo,4.89,18,58,33,167.55
+SA-1246,Running Shorts,262.82,Western Cape,1.7,25,19,16,88.6
+SA-1247,Gym Gloves,278.62,Western Cape,4.83,20,30,46,202.59
+SA-1248,Chino Pants,704.25,Western Cape,2.82,41,29,41,83.94
+SA-1249,Gym Gloves,224.82,North West,1.47,32,13,13,127.83
+SA-1250,BCAA Powder,469.58,KwaZulu-Natal,2.62,44,10,16,153.26
+SA-1251,Creatine Monohydrate,394.5,Eastern Cape,2.15,35,13,46,175.51
+SA-1252,Resistance Bands,181.98,Gauteng,2.77,58,45,27,220.3
+SA-1253,BCAA Powder,419.1,Gauteng,4.89,35,33,60,247.75
+SA-1254,Hydration Bottle,269.84,Eastern Cape,1.4,42,35,42,86.84
+SA-1255,Performance Hoodie,553.81,Western Cape,2.63,39,19,48,231.83
+SA-1256,Sports Bra,330.99,KwaZulu-Natal,1.23,49,57,29,180.93
+SA-1257,Canvas Sneakers,813.14,Western Cape,3.69,29,40,11,142.62
+SA-1258,Running Shorts,394.98,KwaZulu-Natal,4.09,56,54,50,84.53
+SA-1259,Puffer Vest,758.32,KwaZulu-Natal,4.87,47,46,24,202.64
+SA-1260,Meal Replacement Shake,443.13,Western Cape,3.75,59,34,19,219.68
+SA-1261,Whey Protein 1kg,460.05,North West,0.99,11,38,30,151.19
+SA-1262,Trail Socks,148.05,Western Cape,3.99,40,57,56,90.59
+SA-1263,Sports Bra,378.67,KwaZulu-Natal,4.99,40,43,34,133.34
+SA-1264,Denim Jacket,974.8,Western Cape,2.96,53,59,56,195.73
+SA-1265,Creatine Monohydrate,371.02,Gauteng,1.61,45,29,24,240.05
+SA-1266,Omega-3 Capsules,260.1,KwaZulu-Natal,3.61,41,30,40,139.3
+SA-1267,Creatine Monohydrate,306.56,KwaZulu-Natal,2.94,35,32,59,216.78
+SA-1268,Omega-3 Capsules,136.15,North West,0.86,38,51,26,207.05
+SA-1269,Chino Pants,479.83,Western Cape,4.7,54,27,18,98.57
+SA-1270,Meal Replacement Shake,370.78,Gauteng,4.57,24,50,24,88.92
+SA-1271,Trail Socks,112.03,Western Cape,3.57,18,10,45,246.24
+SA-1272,Denim Jacket,943.14,North West,4.45,40,51,22,208.5
+SA-1273,Omega-3 Capsules,183.6,KwaZulu-Natal,4.59,15,51,46,119.48
+SA-1274,Performance Hoodie,864.29,Gauteng,4.47,21,12,35,213.95
+SA-1275,Denim Jacket,1260.97,North West,4.67,12,10,29,176.55
+SA-1276,Running Shorts,384.69,Western Cape,2.54,51,44,43,163.97
+SA-1277,Sports Bra,461.76,Western Cape,1.37,17,31,20,204.29
+SA-1278,Creatine Monohydrate,392.72,Gauteng,2.02,28,46,53,208.74
+SA-1279,Denim Jacket,1065.57,KwaZulu-Natal,2.32,37,42,30,94.75
+SA-1280,Running Shorts,235.96,Gauteng,1.96,25,10,26,145.21
+SA-1281,Compression Top,525.13,North West,1.86,56,46,10,124.46
+SA-1282,Resistance Bands,202.92,Gauteng,1.03,29,20,35,196.63
+SA-1283,Omega-3 Capsules,246.35,KwaZulu-Natal,4.73,33,49,24,117.25
+SA-1284,Sports Bra,368.55,Western Cape,4.95,33,36,54,173.37
+SA-1285,Puffer Vest,1053.41,Free State,4.22,58,25,53,208.31
+SA-1286,Yoga Leggings,532.93,Western Cape,2.13,46,17,13,220.89
+SA-1287,Canvas Sneakers,500.08,Western Cape,1.24,43,38,17,195.65
+SA-1288,Meal Replacement Shake,445.65,Mpumalanga,2.5,13,39,18,167.25
+SA-1289,Compression Top,468.17,KwaZulu-Natal,3.53,29,56,11,147.31
+SA-1290,Cotton T-Shirt,260.87,KwaZulu-Natal,0.7,32,54,14,172.0
+SA-1291,Performance Hoodie,872.83,Gauteng,4.7,12,28,36,110.6
+SA-1292,Sports Bra,440.46,Northern Cape,3.41,36,33,34,156.25
+SA-1293,Gym Gloves,205.35,KwaZulu-Natal,3.48,44,18,51,226.25
+SA-1294,Running Shorts,234.69,Western Cape,2.88,56,24,10,208.55
+SA-1295,Omega-3 Capsules,207.71,Eastern Cape,2.41,34,24,25,158.31
+SA-1296,Sports Bra,317.91,North West,3.76,17,12,52,151.27
+SA-1297,Cotton T-Shirt,185.1,Gauteng,3.17,38,48,53,199.56
+SA-1298,Performance Hoodie,596.89,Gauteng,2.48,44,23,58,226.83
+SA-1299,Performance Hoodie,555.05,Northern Cape,1.55,56,46,30,178.17
+SA-1300,Multivitamin Pack,196.38,Limpopo,4.94,43,24,36,131.09
+SA-1301,Performance Hoodie,721.69,KwaZulu-Natal,3.81,21,50,53,152.62
+SA-1302,Puffer Vest,627.13,Western Cape,3.39,34,60,43,134.18
+SA-1303,Trail Socks,119.83,Gauteng,1.33,44,40,25,224.39
+SA-1304,Omega-3 Capsules,274.78,Gauteng,2.58,13,45,36,244.52
+SA-1305,Hydration Bottle,208.5,Western Cape,1.65,31,51,15,236.78
+SA-1306,Resistance Bands,112.87,Eastern Cape,1.36,27,34,53,182.84
+SA-1307,Performance Hoodie,848.45,Gauteng,3.93,56,52,45,116.89
+SA-1308,Chino Pants,746.79,Western Cape,4.81,10,23,22,243.55
+SA-1309,Running Shorts,348.38,Eastern Cape,4.61,54,48,55,114.77
+SA-1310,Whey Protein 1kg,642.23,Eastern Cape,2.21,44,51,32,132.43
+SA-1311,Resistance Bands,175.92,Western Cape,0.94,56,40,58,222.75
+SA-1312,Chino Pants,547.28,Western Cape,3.03,24,57,19,82.76
+SA-1313,Hydration Bottle,269.21,KwaZulu-Natal,2.38,19,22,31,119.1
+SA-1314,Meal Replacement Shake,549.01,Western Cape,3.45,53,31,26,209.77
+SA-1315,Puffer Vest,1178.9,KwaZulu-Natal,2.71,20,56,60,139.87
+SA-1316,Sports Bra,429.08,Western Cape,4.63,44,51,13,169.07
+SA-1317,Yoga Leggings,679.82,KwaZulu-Natal,3.94,36,18,50,119.34
+SA-1318,Sports Bra,251.29,Western Cape,2.18,49,50,52,238.76
+SA-1319,Puffer Vest,994.57,Gauteng,2.89,36,10,11,170.0
+SA-1320,Creatine Monohydrate,356.15,Gauteng,2.76,54,53,37,217.05
+SA-1321,Denim Jacket,763.21,Gauteng,1.17,22,49,43,122.91
+SA-1322,Resistance Bands,139.1,Western Cape,2.18,35,39,46,121.35
+SA-1323,Whey Protein 1kg,553.99,Free State,0.86,51,58,12,95.9
+SA-1324,Gym Gloves,205.58,Western Cape,3.37,54,20,15,164.98
+SA-1325,Trail Socks,143.49,Western Cape,4.9,16,43,12,119.06
+SA-1326,Meal Replacement Shake,441.65,Gauteng,0.83,27,44,46,191.88
+SA-1327,Denim Jacket,1256.26,Gauteng,4.83,47,19,58,219.52
+SA-1328,Gym Gloves,288.33,Gauteng,3.04,46,34,53,232.41
+SA-1329,Multivitamin Pack,225.77,Eastern Cape,4.06,54,56,15,165.13
+SA-1330,Resistance Bands,107.05,Western Cape,4.27,31,48,59,184.36
+SA-1331,BCAA Powder,348.18,Eastern Cape,0.63,27,60,38,163.4
+SA-1332,Resistance Bands,181.96,Western Cape,1.34,47,52,34,94.57
+SA-1333,BCAA Powder,322.84,Gauteng,0.83,27,19,34,200.99
+SA-1334,Sports Bra,433.91,Gauteng,0.98,10,29,38,141.19
+SA-1335,Creatine Monohydrate,269.45,Gauteng,2.44,45,45,42,149.37
+SA-1336,Cotton T-Shirt,162.44,KwaZulu-Natal,3.19,60,30,34,82.1
+SA-1337,Trail Socks,117.78,Gauteng,4.56,25,46,43,108.83
+SA-1338,Gym Gloves,174.43,Gauteng,1.71,19,14,20,153.89
+SA-1339,Trail Socks,108.98,Eastern Cape,2.13,25,56,50,164.29
+SA-1340,BCAA Powder,297.89,Gauteng,1.87,35,31,49,144.58
+SA-1341,Multivitamin Pack,237.04,Western Cape,4.21,51,48,18,131.07
+SA-1342,BCAA Powder,485.82,Gauteng,1.91,35,30,28,204.93
+SA-1343,Puffer Vest,1179.66,Eastern Cape,1.97,27,60,35,142.05
+SA-1344,Meal Replacement Shake,358.94,Northern Cape,1.31,59,45,11,242.01
+SA-1345,Compression Top,581.89,Gauteng,4.09,54,14,60,215.16
+SA-1346,Puffer Vest,682.51,Gauteng,1.64,19,55,37,214.14
+SA-1347,Yoga Leggings,506.17,KwaZulu-Natal,3.12,44,42,54,151.11
+SA-1348,Performance Hoodie,815.29,Western Cape,4.53,44,48,50,235.45
+SA-1349,Running Shorts,352.79,KwaZulu-Natal,2.1,51,49,12,175.75
+SA-1350,Gym Gloves,294.02,Western Cape,4.08,16,10,16,123.99
+SA-1351,Canvas Sneakers,772.43,KwaZulu-Natal,3.59,24,38,33,146.49
+SA-1352,Meal Replacement Shake,506.13,Gauteng,4.99,40,16,28,150.72
+SA-1353,Yoga Leggings,389.62,North West,1.14,29,31,39,213.33
+SA-1354,Canvas Sneakers,640.46,Western Cape,2.47,54,38,30,91.42
+SA-1355,Performance Hoodie,823.07,Gauteng,4.32,51,16,53,216.01
+SA-1356,Whey Protein 1kg,629.6,KwaZulu-Natal,1.99,37,39,24,215.62
+SA-1357,Denim Jacket,810.83,KwaZulu-Natal,2.28,57,49,22,156.43
+SA-1358,Trail Socks,117.88,KwaZulu-Natal,1.43,58,55,60,90.64
+SA-1359,Running Shorts,358.9,Western Cape,2.15,22,39,17,124.6
+SA-1360,Puffer Vest,915.63,KwaZulu-Natal,3.19,49,35,47,99.42
+SA-1361,Resistance Bands,225.83,KwaZulu-Natal,4.16,55,29,49,180.33
+SA-1362,Sports Bra,327.3,Gauteng,1.03,33,54,19,166.84
+SA-1363,Trail Socks,138.64,KwaZulu-Natal,2.4,41,50,44,197.88
+SA-1364,Denim Jacket,1031.95,Western Cape,1.13,30,38,49,89.11
+SA-1365,Resistance Bands,241.78,Western Cape,1.38,34,45,42,191.02
+SA-1366,Trail Socks,147.47,Western Cape,4.28,41,20,15,176.12
+SA-1367,Whey Protein 1kg,551.23,Gauteng,2.92,20,59,39,176.16
+SA-1368,Puffer Vest,928.84,Gauteng,1.01,59,44,33,172.15
+SA-1369,Performance Hoodie,803.0,Western Cape,1.48,37,16,57,221.11
+SA-1370,Whey Protein 1kg,553.2,Northern Cape,2.52,32,15,38,227.1
+SA-1371,Running Shorts,354.13,Gauteng,4.15,47,54,32,226.38
+SA-1372,BCAA Powder,407.19,Gauteng,1.13,23,23,13,176.91
+SA-1373,Hydration Bottle,171.16,Western Cape,1.96,55,28,28,177.37
+SA-1374,Canvas Sneakers,891.74,KwaZulu-Natal,0.93,58,60,36,236.19
+SA-1375,Creatine Monohydrate,422.41,Gauteng,4.4,25,19,55,134.76
+SA-1376,Whey Protein 1kg,715.52,KwaZulu-Natal,2.7,46,50,27,186.73
+SA-1377,Gym Gloves,216.8,KwaZulu-Natal,4.46,15,35,42,207.47
+SA-1378,Resistance Bands,167.2,Western Cape,3.12,59,56,15,204.26
+SA-1379,Compression Top,489.45,KwaZulu-Natal,4.33,60,44,35,117.03
+SA-1380,Trail Socks,161.48,Western Cape,1.95,28,31,45,178.25
+SA-1381,Meal Replacement Shake,554.73,Eastern Cape,4.52,58,13,12,96.93
+SA-1382,Compression Top,303.88,Mpumalanga,1.21,39,10,37,114.39
+SA-1383,Sports Bra,469.54,Gauteng,4.43,27,15,51,141.27
+SA-1384,Yoga Leggings,479.15,Mpumalanga,1.24,35,50,29,203.42
+SA-1385,Whey Protein 1kg,599.23,Gauteng,0.93,23,40,14,102.56
+SA-1386,Whey Protein 1kg,630.81,Western Cape,0.54,31,17,37,197.99
+SA-1387,Puffer Vest,641.5,Western Cape,3.79,16,16,30,142.49
+SA-1388,Omega-3 Capsules,152.31,Eastern Cape,3.89,18,51,53,104.29
+SA-1389,Canvas Sneakers,680.65,KwaZulu-Natal,1.24,32,56,23,186.77
+SA-1390,Sports Bra,478.97,KwaZulu-Natal,2.49,23,15,16,103.8
+SA-1391,Running Shorts,316.91,Western Cape,4.83,30,60,18,122.12
+SA-1392,Yoga Leggings,435.86,KwaZulu-Natal,3.75,28,59,54,84.56
+SA-1393,Omega-3 Capsules,163.93,KwaZulu-Natal,1.35,35,28,51,89.28
+SA-1394,Whey Protein 1kg,622.21,Gauteng,2.75,48,14,43,231.08
+SA-1395,Cotton T-Shirt,297.03,North West,1.09,46,36,33,172.88
+SA-1396,Denim Jacket,1156.64,North West,3.97,11,47,14,82.34
+SA-1397,Chino Pants,414.93,Gauteng,4.05,42,28,50,201.15
+SA-1398,Trail Socks,121.36,Western Cape,3.38,44,49,19,127.17
+SA-1399,Omega-3 Capsules,142.43,Mpumalanga,4.88,19,44,30,146.42
+SA-1400,Yoga Leggings,457.56,Western Cape,4.79,25,13,25,94.66
+SA-1401,Trail Socks,90.6,KwaZulu-Natal,0.75,52,57,52,205.91
+SA-1402,Running Shorts,201.53,Gauteng,0.55,41,32,43,167.93
+SA-1403,Creatine Monohydrate,282.39,Gauteng,4.02,27,56,17,211.14
+SA-1404,Cotton T-Shirt,199.25,Western Cape,2.86,26,55,46,186.68
+SA-1405,Puffer Vest,872.12,Western Cape,2.75,46,20,33,106.74
+SA-1406,Running Shorts,377.85,KwaZulu-Natal,1.02,57,42,10,87.49
+SA-1407,Cotton T-Shirt,185.68,Western Cape,2.22,19,21,12,173.99
+SA-1408,Trail Socks,101.45,Gauteng,4.62,30,27,14,177.16
+SA-1409,Running Shorts,299.41,Mpumalanga,1.31,43,12,35,91.72
+SA-1410,Compression Top,558.81,Eastern Cape,1.9,15,45,39,81.35
+SA-1411,Chino Pants,515.64,Eastern Cape,3.83,25,39,33,180.59
+SA-1412,Puffer Vest,1197.67,Eastern Cape,3.8,44,58,60,121.67
+SA-1413,Cotton T-Shirt,288.86,Gauteng,2.94,50,54,10,241.67
+SA-1414,Cotton T-Shirt,262.84,Western Cape,3.82,29,16,23,170.07
+SA-1415,Whey Protein 1kg,595.94,North West,4.88,19,55,27,95.81
+SA-1416,Whey Protein 1kg,763.05,Western Cape,3.65,33,39,57,94.43
+SA-1417,Running Shorts,300.09,KwaZulu-Natal,2.27,47,46,13,153.95
+SA-1418,Sports Bra,308.19,Gauteng,1.92,35,54,57,135.46
+SA-1419,Compression Top,380.59,Gauteng,1.41,59,59,47,98.53
+SA-1420,Running Shorts,231.87,Western Cape,2.33,44,32,59,115.3
+SA-1421,Omega-3 Capsules,207.77,Limpopo,0.91,53,29,55,198.47
+SA-1422,Performance Hoodie,585.01,Limpopo,1.17,55,25,32,147.36
+SA-1423,Performance Hoodie,769.87,Gauteng,4.96,11,35,38,174.51
+SA-1424,Hydration Bottle,166.48,Western Cape,4.12,18,17,10,90.48
+SA-1425,Whey Protein 1kg,494.75,Free State,2.18,50,51,15,179.0
+SA-1426,Creatine Monohydrate,432.49,Gauteng,4.99,22,51,38,217.58
+SA-1427,Yoga Leggings,665.78,Free State,1.99,12,39,13,108.56
+SA-1428,Meal Replacement Shake,428.95,Eastern Cape,2.73,34,53,37,109.38
+SA-1429,Chino Pants,762.32,Gauteng,2.51,19,12,49,185.26
+SA-1430,Whey Protein 1kg,675.55,Western Cape,4.47,40,13,15,127.56
+SA-1431,Sports Bra,353.81,KwaZulu-Natal,4.09,25,50,44,215.12
+SA-1432,Gym Gloves,266.29,Western Cape,2.95,41,32,46,165.41
+SA-1433,Gym Gloves,189.57,Gauteng,3.19,11,59,27,89.96
+SA-1434,Puffer Vest,916.66,Eastern Cape,5.0,20,16,25,191.67
+SA-1435,Creatine Monohydrate,355.74,Free State,3.82,58,24,46,223.91
+SA-1436,Gym Gloves,202.22,Free State,4.3,21,25,47,134.06
+SA-1437,Resistance Bands,236.1,Gauteng,3.65,46,46,19,175.73
+SA-1438,Chino Pants,733.68,Free State,4.87,44,29,21,163.37
+SA-1439,Yoga Leggings,368.66,KwaZulu-Natal,0.59,40,10,31,236.04
+SA-1440,Chino Pants,721.58,Western Cape,1.3,30,13,11,105.11
+SA-1441,Sports Bra,442.59,Limpopo,4.37,14,33,55,240.13
+SA-1442,Gym Gloves,236.9,Western Cape,1.95,20,56,37,214.61
+SA-1443,Puffer Vest,988.51,Gauteng,4.86,54,49,60,140.66
+SA-1444,Meal Replacement Shake,543.34,Western Cape,3.8,28,18,21,203.9
+SA-1445,Meal Replacement Shake,416.48,Northern Cape,4.84,12,21,48,134.1
+SA-1446,BCAA Powder,304.22,KwaZulu-Natal,4.72,19,31,57,93.23
+SA-1447,Resistance Bands,246.36,Gauteng,4.48,15,55,52,188.65
+SA-1448,Multivitamin Pack,238.33,Gauteng,1.62,14,32,26,213.79
+SA-1449,Cotton T-Shirt,156.22,Western Cape,2.39,20,36,41,229.9
+SA-1450,Resistance Bands,180.9,Gauteng,2.66,46,51,58,196.82
+SA-1451,Denim Jacket,969.77,Free State,0.65,11,30,26,241.78
+SA-1452,Yoga Leggings,468.63,Limpopo,1.22,14,45,15,137.45
+SA-1453,BCAA Powder,472.31,KwaZulu-Natal,2.44,51,20,48,231.26
+SA-1454,Denim Jacket,731.13,Western Cape,4.88,36,54,45,202.75
+SA-1455,Hydration Bottle,168.79,Gauteng,1.57,13,35,46,173.44
+SA-1456,Puffer Vest,691.15,Western Cape,2.42,28,52,50,182.04
+SA-1457,Chino Pants,437.79,Gauteng,3.37,15,40,17,132.42
+SA-1458,Gym Gloves,219.64,Mpumalanga,1.69,51,44,34,111.43
+SA-1459,Gym Gloves,204.41,Western Cape,1.68,39,26,24,222.3
+SA-1460,Meal Replacement Shake,317.49,Eastern Cape,3.5,15,52,32,217.39
+SA-1461,Trail Socks,176.07,KwaZulu-Natal,2.99,34,43,36,244.16
+SA-1462,Puffer Vest,942.63,Gauteng,1.84,35,55,12,165.36
+SA-1463,Canvas Sneakers,799.23,KwaZulu-Natal,3.29,17,58,38,109.39
+SA-1464,Denim Jacket,1282.3,Free State,1.07,37,15,53,154.02
+SA-1465,Sports Bra,457.53,Gauteng,4.6,14,15,34,174.58
+SA-1466,Hydration Bottle,177.92,Gauteng,2.56,10,60,54,185.92
+SA-1467,Canvas Sneakers,789.84,Gauteng,1.17,46,47,47,208.92
+SA-1468,Running Shorts,383.99,KwaZulu-Natal,0.95,28,44,32,229.24
+SA-1469,Creatine Monohydrate,325.61,Western Cape,3.24,12,21,27,148.51
+SA-1470,BCAA Powder,401.16,KwaZulu-Natal,0.67,31,54,25,88.38
+SA-1471,Puffer Vest,1151.5,Mpumalanga,0.59,60,29,29,127.66
+SA-1472,Puffer Vest,1113.94,KwaZulu-Natal,4.88,24,18,29,245.62
+SA-1473,Compression Top,531.21,Western Cape,3.78,48,51,15,111.95
+SA-1474,Chino Pants,764.37,Western Cape,2.68,43,33,13,167.6
+SA-1475,Denim Jacket,738.37,KwaZulu-Natal,2.32,59,43,46,84.92
+SA-1476,Chino Pants,749.07,Gauteng,0.76,12,39,13,236.07
+SA-1477,Chino Pants,508.59,Free State,2.77,50,17,53,85.2
+SA-1478,Resistance Bands,172.32,Western Cape,4.82,40,47,45,139.46
+SA-1479,Denim Jacket,1201.59,Gauteng,4.24,15,28,11,145.72
+SA-1480,Denim Jacket,1211.29,Eastern Cape,1.46,24,51,24,195.21
+SA-1481,Creatine Monohydrate,379.32,Western Cape,4.39,59,53,10,160.6
+SA-1482,Sports Bra,410.84,KwaZulu-Natal,0.54,26,48,29,201.17
+SA-1483,Creatine Monohydrate,333.76,Western Cape,2.07,26,23,39,131.36
+SA-1484,Canvas Sneakers,811.16,Western Cape,0.96,42,52,33,175.45
+SA-1485,BCAA Powder,401.26,Gauteng,0.99,14,31,27,188.9
+SA-1486,Creatine Monohydrate,301.23,Eastern Cape,4.52,29,22,19,167.94
+SA-1487,Whey Protein 1kg,763.89,Free State,4.11,48,35,52,134.33
+SA-1488,Sports Bra,429.32,KwaZulu-Natal,4.99,26,36,35,146.01
+SA-1489,Performance Hoodie,732.21,Northern Cape,4.17,31,56,55,117.8
+SA-1490,Hydration Bottle,224.75,Western Cape,4.73,32,42,29,223.72
+SA-1491,Hydration Bottle,156.17,Gauteng,1.08,26,56,45,209.7
+SA-1492,Denim Jacket,1267.15,Mpumalanga,3.44,24,32,24,206.52
+SA-1493,Omega-3 Capsules,200.48,Limpopo,2.17,47,28,39,224.71
+SA-1494,Puffer Vest,631.21,KwaZulu-Natal,3.11,49,14,40,231.2
+SA-1495,Canvas Sneakers,458.91,KwaZulu-Natal,2.88,36,13,19,103.35
+SA-1496,Chino Pants,536.07,Northern Cape,4.52,39,19,30,226.61
+SA-1497,Denim Jacket,1166.36,Western Cape,3.34,21,30,50,89.86
+SA-1498,Compression Top,381.06,Eastern Cape,1.26,58,20,41,213.49
+SA-1499,Yoga Leggings,394.29,Western Cape,2.43,37,40,34,80.79
+SA-1500,Hydration Bottle,158.91,Western Cape,0.56,30,58,43,112.4
