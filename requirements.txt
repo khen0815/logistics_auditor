@@ -3,3 +3,5 @@ pandas
 plotly
 openpyxl
 pdfplumber
+fpdf2
+supabase

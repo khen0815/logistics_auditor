@@ -1,9 +1,9 @@
 Order_ID,SKU,Revenue,Province,Actual_Weight_kg,Length_cm,Width_cm,Height_cm,Billed_Shipping_Cost_ZAR
 SA-1001,Running Shorts,204.0,Gauteng,1.5,57,16,53,205.91
 SA-1002,Hydration Bottle,142.04,Western Cape,0.63,23,24,42,182.34
-SA-1003,Hydration Bottle,158.83,KwaZulu-Natal,2.95,24,38,47,127.29
-SA-1004,Cotton T-Shirt,262.82,Gauteng,2.4,27,19,23,242.73
-SA-1005,Multivitamin Pack,169.44,Western Cape,2.12,32,48,26,217.21
+SA-1003,Hydration Bottle,158.83,KwaZulu-Natal,50,20,20,20,127.29
+SA-1004,Cotton T-Shirt,262.82,Gauteng,2.4,150,150,150,242.73
+SA-1005,Multivitamin Pack,169.44,Western Cape,2.12,21,30,2,217.21
 SA-1006,Compression Top,459.87,Northern Cape,2.2,45,28,50,185.15
 SA-1007,Resistance Bands,185.6,KwaZulu-Natal,0.71,24,59,28,247.49
 SA-1008,Whey Protein 1kg,752.27,Western Cape,2.54,33,20,33,140.4

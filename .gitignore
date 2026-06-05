@@ -4,3 +4,4 @@ venv/
 env/
 .env
 .DS_Store
+.streamlit/secrets.toml
