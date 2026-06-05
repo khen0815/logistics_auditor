@@ -17,7 +17,7 @@ if uploaded_file is not None:
 else:
     data = pd.read_csv("mock_shipping_data.csv")
 
-required_columns = {
+required_columns = [
     "Order_ID",
     "SKU",
     "Revenue",
@@ -27,9 +27,9 @@ required_columns = {
     "Width_cm",
     "Height_cm",
     "Billed_Shipping_Cost_ZAR",
-}
+]
 
-missing_columns = required_columns.difference(data.columns)
+missing_columns = set(required_columns).difference(data.columns)
 if missing_columns:
     st.error(f"CSV is missing required columns: {', '.join(sorted(missing_columns))}")
     st.stop()
