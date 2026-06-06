@@ -274,6 +274,34 @@ def extract_pdf_rows(pdf_source):
     return pd.DataFrame(rows)
 
 
+class PDFReport(FPDF):
+    PRIMARY = (30, 41, 59)
+    SECONDARY = (51, 65, 85)
+    ACCENT = (37, 99, 235)
+    BORDER = (226, 232, 240)
+    MUTED = (100, 116, 139)
+    ROW_ALT = (248, 250, 252)
+    WHITE = (255, 255, 255)
+
+    def header(self):
+        self.set_y(10)
+        self.set_font("Helvetica", "B", 10)
+        self.set_text_color(*self.PRIMARY)
+        self.cell(0, 6, "Logistics Audit & Margin Recovery Report", border=0, ln=1, align="R")
+        self.set_draw_color(*self.BORDER)
+        self.set_line_width(0.4)
+        self.line(self.l_margin, 20, self.w - self.r_margin, 20)
+        self.ln(8)
+
+    def footer(self):
+        self.set_y(-14)
+        self.set_font("Helvetica", "", 8)
+        self.set_text_color(148, 163, 184)
+        self.cell(95, 6, "Prepared by Kyle | Logistics Audit Advisory", border=0, align="L")
+        self.cell(0, 6, f"Page {self.page_no()} of {{nb}}", border=0, align="R")
+
+
+
 def generate_formal_pdf(
     total_loss,
     avg_penalty,
@@ -294,53 +322,91 @@ def generate_formal_pdf(
     has_revenue,
     prepared_by="Logistics Audit Consultant",
 ):
-    pdf = FPDF()
-    pdf.set_margins(15, 15, 15)
-    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf = PDFReport()
+    pdf.alias_nb_pages()
+    pdf.set_margins(15, 24, 15)
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+
+    def set_text_color(color):
+        pdf.set_text_color(*color)
+
+    def ensure_space(required_height):
+        if pdf.get_y() + required_height > pdf.page_break_trigger:
+            pdf.add_page()
 
     def write_text(text, height=6, align="L"):
         pdf.set_x(pdf.l_margin)
-        pdf.multi_cell(0, height, str(text), align=align)
-
-    def write_heading(text, size=13):
-        pdf.ln(3)
-        pdf.set_font("Helvetica", "B", size)
-        write_text(text, height=8)
         pdf.set_font("Helvetica", "", 10)
+        set_text_color(PDFReport.SECONDARY)
+        pdf.multi_cell(0, height, str(text), border=0, align=align)
+        pdf.ln(1.5)
 
-    def add_page(title=None):
-        pdf.add_page()
-        pdf.set_font("Helvetica", "B", 9)
-        pdf.cell(0, 7, "Logistics Audit & Margin Recovery Report", align="R")
-        pdf.ln(8)
-        if title:
-            write_heading(title, size=14)
+    def write_h1(text):
+        ensure_space(18)
+        pdf.set_font("Helvetica", "B", 18)
+        set_text_color(PDFReport.PRIMARY)
+        pdf.multi_cell(0, 9, str(text), border=0, align="C")
+        pdf.ln(1)
 
-    def write_footer():
-        pdf.set_y(-15)
-        pdf.set_font("Helvetica", "I", 8)
-        pdf.cell(0, 8, f"Prepared by {prepared_by}", align="C")
+    def write_h2(text):
+        ensure_space(16)
+        pdf.ln(3)
+        pdf.set_font("Helvetica", "B", 12)
+        set_text_color(PDFReport.PRIMARY)
+        pdf.multi_cell(0, 7, str(text), border=0, align="L")
+        pdf.set_draw_color(*PDFReport.BORDER)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
+        pdf.ln(3)
 
-    def write_small_table(headers, rows, widths):
+    def write_h3(text):
+        ensure_space(12)
+        pdf.ln(2)
+        pdf.set_font("Helvetica", "B", 11)
+        set_text_color(PDFReport.SECONDARY)
+        pdf.multi_cell(0, 6, str(text), border=0, align="L")
+        pdf.ln(1)
+
+    def write_kicker(text):
+        pdf.set_font("Helvetica", "", 11)
+        set_text_color(PDFReport.MUTED)
+        pdf.multi_cell(0, 6, str(text), border=0, align="C")
+        pdf.ln(4)
+
+    def truncate(value, max_chars):
+        value = str(value)
+        return value if len(value) <= max_chars else f"{value[: max_chars - 1]}…"
+
+    def draw_styled_table(headers, rows, widths, aligns=None, max_chars=None):
+        aligns = aligns or ["L"] * len(headers)
+        max_chars = max_chars or [24] * len(headers)
+        row_height = 7
+        ensure_space(row_height * 2)
         pdf.set_font("Helvetica", "B", 8)
-        for header, width in zip(headers, widths):
-            pdf.cell(width, 7, str(header)[:24], border=1)
-        pdf.ln()
-        pdf.set_font("Helvetica", "", 7)
-        for row in rows:
-            for value, width in zip(row, widths):
-                pdf.cell(width, 6, str(value)[:24], border=1)
-            pdf.ln()
+        pdf.set_fill_color(*PDFReport.PRIMARY)
+        pdf.set_text_color(*PDFReport.WHITE)
+        pdf.set_draw_color(*PDFReport.PRIMARY)
+        for header, width, align in zip(headers, widths, aligns):
+            pdf.cell(width, row_height, truncate(header, 26), border=1, align=align, fill=True)
+        pdf.ln(row_height)
 
-    add_page()
-    pdf.set_font("Helvetica", "B", 18)
-    write_text("Logistics Audit & Margin Recovery Report", height=10, align="C")
-    pdf.set_font("Helvetica", "", 11)
-    write_text("Decision Roadmap for Operational Margin Recovery", align="C")
-    pdf.ln(5)
+        pdf.set_font("Helvetica", "", 7.5)
+        pdf.set_draw_color(*PDFReport.BORDER)
+        for index, row in enumerate(rows):
+            ensure_space(row_height)
+            fill_color = PDFReport.ROW_ALT if index % 2 else PDFReport.WHITE
+            pdf.set_fill_color(*fill_color)
+            pdf.set_text_color(*PDFReport.SECONDARY)
+            for value, width, align, limit in zip(row, widths, aligns, max_chars):
+                pdf.cell(width, row_height, truncate(value, limit), border=1, align=align, fill=True)
+            pdf.ln(row_height)
+        pdf.ln(4)
+
+    write_h1("Logistics Audit & Margin Recovery Report")
+    write_kicker("Decision Roadmap for Operational Margin Recovery")
     write_text(f"Courier configuration assessed: {courier_name}")
 
-    write_heading("1. Executive Overview & Financial Impact")
+    write_h2("1. Executive Overview & Financial Impact")
     recoverable_margin = total_loss + total_dead_stock
     write_text(
         f"The audit identified R{total_loss:,.2f} in operational leakage from volumetric packaging penalties across {num_flagged:,} flagged shipments. The recoverable margin opportunity is R{recoverable_margin:,.2f}, combining direct courier leakage recovery with R{total_dead_stock:,.2f} in capital trapped in C-Class inventory."
@@ -353,14 +419,13 @@ def generate_formal_pdf(
     write_text(
         f"This audit has identified an annualized volumetric leak of R{annualized_leak:,.2f}. We propose a full-scale warehouse SOP implementation and courier portal lock-down for a once-off fee of R{suggested_implementation_fee:,.2f}, representing an ROI timeline of less than 4 weeks."
     )
-    write_heading("Methodology: Deterministic Packaging Optimization", size=11)
+    write_h3("Methodology: Deterministic Packaging Optimization")
     write_text(
         "The optimization engine is not a percentage estimate. Each flagged order is mathematically tested against a standard South African packaging matrix of A4 flyers, A3 flyers, small boxes, and medium boxes. If an item physically fits into a smaller standard package, the model recalculates volumetric weight using that package's dimensions, subtracts remaining courier penalty exposure, subtracts the packaging material cost, and reports only the net recoverable margin."
     )
-    write_footer()
 
-    add_page("2. The Operational Audit (The What)")
-    write_text("Top 10 Orders Triggering Volumetric Penalties")
+    write_h2("2. The Operational Audit (The What)")
+    write_h3("Top 10 Orders Triggering Volumetric Penalties")
     top_rows = []
     for _, row in top_penalty_orders.head(10).iterrows():
         top_rows.append([
@@ -371,65 +436,72 @@ def generate_formal_pdf(
             f"{row['Volumetric_Weight_kg']:.2f}",
             f"R{row['Estimated_Loss_ZAR']:.2f}",
         ])
-    write_small_table(
+    draw_styled_table(
         ["Order", "SKU", "Province", "Actual", "Vol", "Leak"],
         top_rows,
-        [24, 42, 28, 20, 20, 24],
+        [24, 46, 30, 20, 20, 28],
+        aligns=["L", "L", "L", "R", "R", "R"],
+        max_chars=[18, 28, 18, 10, 10, 14],
     )
-    pdf.ln(4)
-    write_text(f"ABC Inventory Analysis Summary by {abc_metric_label}")
+
+    write_h3(f"ABC Inventory Analysis Summary by {abc_metric_label}")
     abc_rows = []
     for _, row in abc_summary.iterrows():
         metric_value = f"R{row[abc_metric_column]:,.2f}" if abc_metric_column == "Revenue" else f"{int(row[abc_metric_column]):,}"
         abc_rows.append([row["ABC_Class"], row["SKU"], metric_value])
-    write_small_table(["Class", "SKU", abc_metric_label], abc_rows[:18], [45, 75, 35])
-    write_footer()
+    draw_styled_table(
+        ["Class", "SKU", abc_metric_label],
+        abc_rows[:18],
+        [58, 82, 38],
+        aligns=["L", "L", "R"],
+        max_chars=[28, 42, 18],
+    )
 
-    add_page("Itemized SKU Action Plan")
-    pdf.set_font("Helvetica", "B", 8)
-    sku_table_widths = [62, 25, 34, 58]
-    for header, width in zip(["SKU", "Total Orders", "Volumetric Penalty", "Action Required"], sku_table_widths):
-        pdf.cell(width, 8, header, border=1, align="C")
-    pdf.ln()
-    pdf.set_font("Helvetica", "", 7)
+    write_h2("Itemized SKU Action Plan")
+    sku_rows = []
     for _, row in sku_action_matrix.head(15).iterrows():
-        pdf.cell(sku_table_widths[0], 7, str(row["SKU"])[:34], border=1)
-        pdf.cell(sku_table_widths[1], 7, f"{int(row['Total Orders']):,}", border=1, align="R")
-        pdf.cell(sku_table_widths[2], 7, f"R{row['Total Volumetric Penalty (ZAR)']:,.2f}", border=1, align="R")
-        pdf.cell(sku_table_widths[3], 7, str(row["Recommendation"])[:36], border=1)
-        pdf.ln()
-    write_footer()
+        sku_rows.append([
+            row["SKU"],
+            f"{int(row['Total Orders']):,}",
+            f"R{row['Total Volumetric Penalty (ZAR)']:,.2f}",
+            row["Recommendation"],
+        ])
+    draw_styled_table(
+        ["SKU", "Total Orders", "Volumetric Penalty", "Action Required"],
+        sku_rows,
+        [54, 28, 40, 58],
+        aligns=["L", "R", "R", "L"],
+        max_chars=[28, 12, 18, 34],
+    )
 
-    add_page("3. Strategic Decision Matrix (The Why)")
+    write_h2("3. Strategic Decision Matrix (The Why)")
     write_text(
         f"Regional Strategy Finding: {highest_penalty_province} is the highest-loss province for volumetric inefficiency. The recommended inventory shift is to prioritize packaging controls and stock positioning in {highest_penalty_province}, then replicate the SOP in lower-loss provinces once the leakage trend is reduced."
     )
-    write_heading("Founder-Friendly ELI5 Translation", size=11)
+    write_h3("Founder-Friendly ELI5 Translation")
     write_text(
         "Shipping: Imagine paying for a massive moving box just to ship a single t-shirt. The courier treats that t-shirt like it is a heavy bowling ball because it takes up so much physical space in their truck. We are stopping that empty box tax by switching to tight flyer bags."
     )
     write_text(
         "Stock: Think of your store like a closet. Most sales come from a small set of rockstar products. The slow items are sitting on the shelf gathering dust and eating up cash. We clear out the dust-gatherers so the business can buy more of what actually sells."
     )
-    write_footer()
 
-    add_page("4. Implementation Roadmap (The How)")
+    write_h2("4. Implementation Roadmap (The How)")
     write_text(f"What-If Simulator Projection: Based on the current audit, implementing the recommended changes projects a monthly margin recovery of R{projected_savings:,.2f}.")
-    write_heading("Phase 1: Implement a Strict Packaging Matrix (SOP)", size=11)
+    write_h3("Phase 1: Implement a Strict Packaging Matrix (SOP)")
     write_text("- Stop allowing fulfillment staff to guess box sizes. Create a physical Packaging Matrix poster for the packing station.")
     write_text(f"- Rule: All apparel (e.g., {sample_sku}) must go into A3 or A4 courier flyer bags. Only fragile or bulk orders exceeding 3 items qualify for a corrugated box.")
-    write_heading("Phase 2: Lock Courier Portal Routing Rules", size=11)
+    write_h3("Phase 2: Lock Courier Portal Routing Rules")
     write_text("- Log into your Bob Go or The Courier Guy portal and hard-code your default parcel dimensions.")
     write_text("- Remove permission for standard packing staff to manually input dimensions during waybill generation.")
-    write_heading("Phase 3: Execute the Dead-Stock Liquidation Campaign", size=11)
+    write_h3("Phase 3: Execute the Dead-Stock Liquidation Campaign")
     write_text(f"- Do not discount the {num_c_skus:,} C-Class SKUs individually. Bundle them to protect brand value.")
     if has_revenue:
         write_text(f"- Tactic: Launch a Mystery Box or Buy One A-Class Item, Get a C-Class Item Free weekend sale to inject R{total_dead_stock:,.2f} back into working capital.")
     else:
         write_text("- Tactic: Launch a Mystery Box or Buy One A-Class Item, Get a C-Class Item Free weekend sale to immediately recover the initial manufacturing cost back into working capital.")
-    write_footer()
 
-    add_page("5. Methodology & Integrity Statement")
+    write_h2("5. Methodology & Integrity Statement")
     write_text(
         f"Volumetric Weight Formula: (Length_cm x Width_cm x Height_cm) / {volumetric_divisor}. A shipment is flagged when volumetric weight exceeds actual weight. Financial leakage is calculated as excess kilograms multiplied by the configured excess penalty rate."
     )
@@ -437,7 +509,7 @@ def generate_formal_pdf(
         "ABC Methodology: SKUs are sorted by total revenue contribution. A-Class equals the top 20% of SKUs, B-Class equals the next 30%, and C-Class equals the bottom 50% of SKUs classified as capital traps."
     )
     if qa_sample is not None:
-        write_heading("QA Sample Order Proof", size=11)
+        write_h3("QA Sample Order Proof")
         write_text(f"Auditing Order ID: {qa_sample['order_id']} (SKU: {qa_sample['sku']})")
         write_text(f"Raw Dimensions: {qa_sample['length']:.1f}cm x {qa_sample['width']:.1f}cm x {qa_sample['height']:.1f}cm")
         write_text(f"Formula: ({qa_sample['length']:.1f} * {qa_sample['width']:.1f} * {qa_sample['height']:.1f}) / {qa_sample['divisor']} = {qa_sample['volumetric_weight']:.2f}kg")
@@ -446,11 +518,10 @@ def generate_formal_pdf(
         write_text(f"Financial Leak: {old_excess_weight:.2f}kg excess * R{qa_sample['penalty_rate']:.2f} = R{qa_sample['loss_zar']:.2f}.")
     else:
         write_text("No volumetric penalty rows were available for QA sample validation in this dataset.")
-    write_heading("Integrity & Confidence Statement", size=11)
+    write_h3("Integrity & Confidence Statement")
     write_text(
         "This audit is based on a deterministic, line-item verification model. Output Confidence Level: 98%. The model applies standard South African volumetric divisors directly to the exact physical dimensions and actual weights provided by your courier portal. The 2% variance accounts strictly for potential manual dimension-entry errors present in the original source data."
     )
-    write_footer()
 
     return bytes(pdf.output())
 
