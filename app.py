@@ -23,12 +23,12 @@ def get_supabase_client() -> Client:
 REQUIRED_COLUMNS = [
     "Order_ID",
     "SKU",
-    "Revenue",
     "Province",
     "Actual_Weight_kg",
     "Length_cm",
     "Width_cm",
     "Height_cm",
+    "Volumetric_Weight_kg",
     "Billed_Shipping_Cost_ZAR",
 ]
 
@@ -68,32 +68,50 @@ COLUMN_ALIASES = {
     "height": "Height_cm",
     "height cm": "Height_cm",
     "height_cm": "Height_cm",
+    "volumetric weight": "Volumetric_Weight_kg",
+    "volumetric weight kg": "Volumetric_Weight_kg",
+    "volumetric_weight_kg": "Volumetric_Weight_kg",
+    "csv volumetric weight": "Volumetric_Weight_kg",
+    "billed volumetric weight": "Volumetric_Weight_kg",
 }
 
 NUMERIC_COLUMNS = [
-    "Revenue",
     "Actual_Weight_kg",
     "Length_cm",
     "Width_cm",
     "Height_cm",
+    "Volumetric_Weight_kg",
     "Billed_Shipping_Cost_ZAR",
 ]
 
-standard_packaging = {
-    "A4 Flyer": {"L": 30, "W": 21, "H": 2, "cost": 1.50},
-    "A3 Flyer": {"L": 42, "W": 30, "H": 2, "cost": 2.50},
-    "Small Box": {"L": 25, "W": 15, "H": 10, "cost": 5.00},
-    "Medium Box": {"L": 35, "W": 25, "H": 15, "cost": 8.00},
-}
+DEFAULT_PACKAGING_MATRIX = pd.DataFrame(
+    [
+        {"Package": "A4 Flyer", "L": 30, "W": 21, "H": 2, "cost": 1.50, "Fragile/Void Fill Required": False},
+        {"Package": "A3 Flyer", "L": 42, "W": 30, "H": 2, "cost": 2.50, "Fragile/Void Fill Required": False},
+        {"Package": "Small Box", "L": 25, "W": 15, "H": 10, "cost": 5.00, "Fragile/Void Fill Required": False},
+        {"Package": "Medium Box", "L": 35, "W": 25, "H": 15, "cost": 8.00, "Fragile/Void Fill Required": False},
+    ]
+)
+
+if "packaging_matrix" not in st.session_state:
+    st.session_state["packaging_matrix"] = DEFAULT_PACKAGING_MATRIX.copy()
 
 
-def get_packaging_optimization_details(row, divisor):
-    actual_weight = row["Actual_Weight_kg"]
-    old_volumetric_weight = row["Volumetric_Weight_kg"]
-    penalty_rate = row["Penalty_Rate_ZAR"]
-    old_billed_weight = max(actual_weight, old_volumetric_weight)
-    old_penalty = max(0, old_billed_weight - actual_weight) * penalty_rate
-    item_dims = sorted([row["Length_cm"], row["Width_cm"], row["Height_cm"]])
+def get_packaging_optimization_details(
+    length_cm,
+    width_cm,
+    height_cm,
+    passed_csv_volumetric_weight,
+    actual_weight,
+    penalty_rate,
+    divisor,
+    packaging_matrix,
+):
+    old_volumetric_weight = passed_csv_volumetric_weight
+    old_billed_weight = old_volumetric_weight
+    old_penalty = max(0, old_volumetric_weight - actual_weight) * penalty_rate
+    item_volume_cm3 = length_cm * width_cm * height_cm
+    item_dims = sorted([length_cm, width_cm, height_cm])
 
     base_result = {
         "old_volumetric_weight": old_volumetric_weight,
@@ -104,28 +122,46 @@ def get_packaging_optimization_details(row, divisor):
         "new_volumetric_weight": None,
         "new_billed_weight": None,
         "new_penalty": None,
+        "courier_savings_zar": 0,
         "net_savings": 0,
         "optimization_failed": True,
+        "critical_data_error": False,
+        "recommendation_override": None,
     }
 
-    for package_name, package in sorted(
-        standard_packaging.items(),
-        key=lambda item: item[1]["L"] * item[1]["W"] * item[1]["H"],
-    ):
-        pkg_dims = sorted([package["L"], package["W"], package["H"]])
+    if actual_weight <= 0 or item_volume_cm3 / actual_weight > 40000:
+        return {
+            **base_result,
+            "critical_data_error": True,
+            "recommendation_override": "CRITICAL DATA ERROR: Plausibility check failed. Verify if dimensions were entered in millimeters instead of centimeters.",
+        }
+
+    clean_matrix = packaging_matrix.dropna(subset=["Package", "L", "W", "H", "cost"]).copy()
+    for column in ["L", "W", "H", "cost"]:
+        clean_matrix[column] = pd.to_numeric(clean_matrix[column], errors="coerce")
+    clean_matrix = clean_matrix.dropna(subset=["L", "W", "H", "cost"])
+    clean_matrix["usable_volume"] = clean_matrix["L"] * clean_matrix["W"] * clean_matrix["H"]
+    clean_matrix = clean_matrix.sort_values("usable_volume")
+
+    for _, package in clean_matrix.iterrows():
+        fragile = bool(package.get("Fragile/Void Fill Required", False))
+        usable_factor = 0.85 if fragile else 1.0
+        pkg_dims = sorted([package["L"] * usable_factor, package["W"] * usable_factor, package["H"] * usable_factor])
         if item_dims[0] <= pkg_dims[0] and item_dims[1] <= pkg_dims[1] and item_dims[2] <= pkg_dims[2]:
             new_volumetric_weight = (package["L"] * package["W"] * package["H"]) / divisor
             new_billed_weight = max(actual_weight, new_volumetric_weight)
             new_penalty = max(0, new_billed_weight - actual_weight) * penalty_rate
-            net_savings = old_penalty - (new_penalty + package["cost"])
+            courier_savings_zar = (old_volumetric_weight - new_volumetric_weight) * penalty_rate
+            net_savings = courier_savings_zar - package["cost"]
             if net_savings > 0:
                 return {
                     **base_result,
-                    "matched_package_name": package_name,
-                    "package": package,
+                    "matched_package_name": package["Package"],
+                    "package": package.to_dict(),
                     "new_volumetric_weight": new_volumetric_weight,
                     "new_billed_weight": new_billed_weight,
                     "new_penalty": new_penalty,
+                    "courier_savings_zar": courier_savings_zar,
                     "net_savings": net_savings,
                     "optimization_failed": False,
                 }
@@ -133,8 +169,26 @@ def get_packaging_optimization_details(row, divisor):
     return base_result
 
 
-def optimize_packaging(row, divisor):
-    return get_packaging_optimization_details(row, divisor)["net_savings"]
+def optimize_packaging(
+    length_cm,
+    width_cm,
+    height_cm,
+    passed_csv_volumetric_weight,
+    actual_weight,
+    penalty_rate,
+    divisor,
+    packaging_matrix,
+):
+    return get_packaging_optimization_details(
+        length_cm,
+        width_cm,
+        height_cm,
+        passed_csv_volumetric_weight,
+        actual_weight,
+        penalty_rate,
+        divisor,
+        packaging_matrix,
+    )["net_savings"]
 
 
 def normalize_column_name(column):
@@ -160,6 +214,7 @@ def parse_dimensions(value):
 
 def standardize_dataframe(raw_data):
     data = raw_data.copy()
+    data.columns = data.columns.astype(str).str.strip()
     data.columns = [normalize_column_name(column) for column in data.columns]
 
     if "Dimensions" in data.columns and not {"Length_cm", "Width_cm", "Height_cm"}.issubset(data.columns):
@@ -170,8 +225,6 @@ def standardize_dataframe(raw_data):
 
     if "SKU" not in data.columns:
         data["SKU"] = "Courier Invoice Line"
-    if "Revenue" not in data.columns and "Billed_Shipping_Cost_ZAR" in data.columns:
-        data["Revenue"] = data["Billed_Shipping_Cost_ZAR"]
     if "Province" not in data.columns:
         data["Province"] = "Unknown"
 
@@ -236,6 +289,9 @@ def generate_formal_pdf(
     sku_action_matrix,
     highest_penalty_province,
     projected_savings,
+    abc_metric_column,
+    abc_metric_label,
+    has_revenue,
     prepared_by="Logistics Audit Consultant",
 ):
     pdf = FPDF()
@@ -292,6 +348,11 @@ def generate_formal_pdf(
     write_text(
         f"If the client follows this roadmap, the immediate objective is to retain avoidable courier leakage and recycle dead-stock capital into high-velocity A-Class SKUs. The average penalty paid per flagged order was R{avg_penalty:.2f}."
     )
+    annualized_leak = total_loss * 12
+    suggested_implementation_fee = total_loss * 0.75
+    write_text(
+        f"This audit has identified an annualized volumetric leak of R{annualized_leak:,.2f}. We propose a full-scale warehouse SOP implementation and courier portal lock-down for a once-off fee of R{suggested_implementation_fee:,.2f}, representing an ROI timeline of less than 4 weeks."
+    )
     write_heading("Methodology: Deterministic Packaging Optimization", size=11)
     write_text(
         "The optimization engine is not a percentage estimate. Each flagged order is mathematically tested against a standard South African packaging matrix of A4 flyers, A3 flyers, small boxes, and medium boxes. If an item physically fits into a smaller standard package, the model recalculates volumetric weight using that package's dimensions, subtracts remaining courier penalty exposure, subtracts the packaging material cost, and reports only the net recoverable margin."
@@ -316,11 +377,12 @@ def generate_formal_pdf(
         [24, 42, 28, 20, 20, 24],
     )
     pdf.ln(4)
-    write_text("ABC Inventory Analysis Summary")
+    write_text(f"ABC Inventory Analysis Summary by {abc_metric_label}")
     abc_rows = []
     for _, row in abc_summary.iterrows():
-        abc_rows.append([row["ABC_Class"], row["SKU"], f"R{row['Revenue']:,.2f}"])
-    write_small_table(["Class", "SKU", "Revenue"], abc_rows[:18], [45, 75, 35])
+        metric_value = f"R{row[abc_metric_column]:,.2f}" if abc_metric_column == "Revenue" else f"{int(row[abc_metric_column]):,}"
+        abc_rows.append([row["ABC_Class"], row["SKU"], metric_value])
+    write_small_table(["Class", "SKU", abc_metric_label], abc_rows[:18], [45, 75, 35])
     write_footer()
 
     add_page("Itemized SKU Action Plan")
@@ -361,7 +423,10 @@ def generate_formal_pdf(
     write_text("- Remove permission for standard packing staff to manually input dimensions during waybill generation.")
     write_heading("Phase 3: Execute the Dead-Stock Liquidation Campaign", size=11)
     write_text(f"- Do not discount the {num_c_skus:,} C-Class SKUs individually. Bundle them to protect brand value.")
-    write_text(f"- Tactic: Launch a Mystery Box or Buy One A-Class Item, Get a C-Class Item Free weekend sale to inject R{total_dead_stock:,.2f} back into working capital.")
+    if has_revenue:
+        write_text(f"- Tactic: Launch a Mystery Box or Buy One A-Class Item, Get a C-Class Item Free weekend sale to inject R{total_dead_stock:,.2f} back into working capital.")
+    else:
+        write_text("- Tactic: Launch a Mystery Box or Buy One A-Class Item, Get a C-Class Item Free weekend sale to immediately recover the initial manufacturing cost back into working capital.")
     write_footer()
 
     add_page("5. Methodology & Integrity Statement")
@@ -393,12 +458,12 @@ def generate_formal_pdf(
 @st.cache_data(show_spinner="Loading and validating logistics data...")
 def load_data(file_name, file_bytes):
     if file_bytes is None:
-        return pd.read_csv("mock_shipping_data.csv")
+        return pd.read_csv("mock_shipping_data.csv", sep=None, engine="python", encoding="utf-8-sig")
 
     file_name = file_name.lower()
     file_buffer = io.BytesIO(file_bytes)
     if file_name.endswith(".csv"):
-        return pd.read_csv(file_buffer)
+        return pd.read_csv(file_buffer, sep=None, engine="python", encoding="utf-8-sig")
     if file_name.endswith(".xlsx"):
         return pd.read_excel(file_buffer)
     if file_name.endswith(".pdf"):
@@ -417,6 +482,30 @@ def validate_required_columns(data):
 
 
 def generate_sku_matrix(df):
+    df = df.copy()
+    if "ABC_Class" not in df.columns:
+        if "Revenue" in df.columns:
+            abc_source = (
+                df.groupby("SKU", as_index=False)["Revenue"]
+                .sum()
+                .sort_values("Revenue", ascending=False)
+                .reset_index(drop=True)
+            )
+        else:
+            abc_source = (
+                df.groupby("SKU", as_index=False)
+                .agg(Order_Count=("Order_ID", "count"))
+                .sort_values("Order_Count", ascending=False)
+                .reset_index(drop=True)
+            )
+        sku_count = len(abc_source)
+        a_cutoff = math.ceil(sku_count * 0.20)
+        b_cutoff = a_cutoff + math.ceil(sku_count * 0.30)
+        abc_source["ABC_Class"] = "C-Class (Dead Stock)"
+        abc_source.loc[: a_cutoff - 1, "ABC_Class"] = "A-Class (High Volume)"
+        abc_source.loc[a_cutoff:b_cutoff - 1, "ABC_Class"] = "B-Class"
+        df = df.merge(abc_source[["SKU", "ABC_Class"]], on="SKU", how="left")
+
     sku_matrix = (
         df.groupby("SKU", as_index=False)
         .agg(
@@ -426,12 +515,25 @@ def generate_sku_matrix(df):
                 "Average Volumetric Weight": ("Volumetric_Weight_kg", "mean"),
                 "Total Volumetric Penalty (ZAR)": ("Estimated_Loss_ZAR", "sum"),
                 "ABC_Class": ("ABC_Class", "first"),
+                "Gross_Margin_ZAR": ("Gross_Margin_ZAR", "mean"),
+                "Critical Data Error Rows": ("Critical_Data_Error", "sum"),
             }
         )
     )
 
     def recommend(row):
-        has_volumetric_penalty = row["Total Volumetric Penalty (ZAR)"] > 0
+        if row["Critical Data Error Rows"] > 0:
+            return "CRITICAL DATA ERROR: Plausibility check failed. Verify if dimensions were entered in millimeters instead of centimeters."
+
+        total_penalty = row["Total Volumetric Penalty (ZAR)"]
+        gross_margin = row["Gross_Margin_ZAR"]
+        has_margin = pd.notna(gross_margin)
+        if has_margin and total_penalty > gross_margin:
+            return "Immediate Liquidation: Shipping penalty exceeds product margin."
+        if has_margin and gross_margin > total_penalty:
+            return "High-Margin SKU: Protect profit by downsizing packaging."
+
+        has_volumetric_penalty = total_penalty > 0
         is_c_class = "C-Class" in row["ABC_Class"]
         if has_volumetric_penalty:
             if is_c_class:
@@ -523,6 +625,7 @@ negotiated_divisor = st.sidebar.slider("Negotiated Divisor", 3000, 7000, int(vol
 st.sidebar.divider()
 
 uploaded_file = st.sidebar.file_uploader("Upload shipping CSV, Excel, or courier invoice PDF", type=["csv", "xlsx", "pdf"])
+margin_file = st.sidebar.file_uploader("Optional: Upload SKU Margin Data (CSV with 'SKU' and 'Gross_Margin_ZAR')", type=["csv"])
 
 st.sidebar.divider()
 st.sidebar.header("Cloud CRM")
@@ -564,6 +667,25 @@ except Exception as exc:
 
 validate_required_columns(data)
 
+st.subheader("Configuration: Dynamic Packaging Matrix")
+packaging_matrix = st.data_editor(
+    DEFAULT_PACKAGING_MATRIX,
+    num_rows="dynamic",
+    use_container_width=True,
+    column_config={
+        "Package": st.column_config.TextColumn(required=True),
+        "L": st.column_config.NumberColumn("Length (cm)", min_value=0.1, step=0.5, required=True),
+        "W": st.column_config.NumberColumn("Width (cm)", min_value=0.1, step=0.5, required=True),
+        "H": st.column_config.NumberColumn("Height (cm)", min_value=0.1, step=0.5, required=True),
+        "cost": st.column_config.NumberColumn("Packaging Cost (ZAR)", min_value=0.0, step=0.5, required=True),
+        "Fragile/Void Fill Required": st.column_config.CheckboxColumn("Fragile/Void Fill Required"),
+    },
+)
+
+has_revenue = "Revenue" in data.columns
+if has_revenue:
+    data["Revenue"] = data["Revenue"].apply(parse_money)
+
 for column in NUMERIC_COLUMNS:
     data[column] = data[column].apply(parse_money)
 
@@ -572,9 +694,22 @@ if data.empty:
     st.error("No valid audit rows were found after cleaning the uploaded data.")
     st.stop()
 
-data["Volumetric_Weight_kg"] = (
-    data["Length_cm"] * data["Width_cm"] * data["Height_cm"]
-) / volumetric_divisor
+if margin_file is not None:
+    try:
+        margin_data = pd.read_csv(margin_file, sep=None, engine="python", encoding="utf-8-sig")
+        margin_data.columns = margin_data.columns.astype(str).str.strip()
+        missing_margin_columns = {"SKU", "Gross_Margin_ZAR"}.difference(margin_data.columns)
+        if missing_margin_columns:
+            st.error(f"Margin file is missing required columns: {', '.join(sorted(missing_margin_columns))}")
+            st.stop()
+        margin_data = margin_data[["SKU", "Gross_Margin_ZAR"]].copy()
+        margin_data["Gross_Margin_ZAR"] = margin_data["Gross_Margin_ZAR"].apply(parse_money)
+        data = data.merge(margin_data, on="SKU", how="left")
+    except Exception as exc:
+        st.error(f"The SKU margin file could not be loaded: {exc}")
+        st.stop()
+else:
+    data["Gross_Margin_ZAR"] = pd.NA
 
 data["Volumetric_Penalty"] = data["Volumetric_Weight_kg"] > data["Actual_Weight_kg"]
 data["Excess_Weight_kg"] = (
@@ -583,12 +718,22 @@ data["Excess_Weight_kg"] = (
 data["Estimated_Loss_ZAR"] = data["Excess_Weight_kg"] * excess_penalty_per_kg
 data["Penalty_Rate_ZAR"] = excess_penalty_per_kg
 
-sku_revenue = (
-    data.groupby("SKU", as_index=False)["Revenue"]
-    .sum()
-    .sort_values("Revenue", ascending=False)
-    .reset_index(drop=True)
-)
+abc_metric_column = "Revenue" if has_revenue else "Order_Count"
+abc_metric_label = "Revenue" if has_revenue else "Order Volume"
+if has_revenue:
+    sku_revenue = (
+        data.groupby("SKU", as_index=False)["Revenue"]
+        .sum()
+        .sort_values("Revenue", ascending=False)
+        .reset_index(drop=True)
+    )
+else:
+    sku_revenue = (
+        data.groupby("SKU", as_index=False)
+        .agg(Order_Count=("Order_ID", "count"))
+        .sort_values("Order_Count", ascending=False)
+        .reset_index(drop=True)
+    )
 
 sku_count = len(sku_revenue)
 a_cutoff = math.ceil(sku_count * 0.20)
@@ -598,22 +743,30 @@ sku_revenue["ABC_Class"] = "C-Class (Dead Stock)"
 sku_revenue.loc[: a_cutoff - 1, "ABC_Class"] = "A-Class (High Volume)"
 sku_revenue.loc[a_cutoff:b_cutoff - 1, "ABC_Class"] = "B-Class"
 
+data = data.drop(columns=[col for col in data.columns if col == "ABC_Class" or col.startswith("ABC_Class_")], errors="ignore")
 data = data.merge(sku_revenue[["SKU", "ABC_Class"]], on="SKU", how="left")
+if "ABC_Class" not in data.columns:
+    st.error("ABC classification failed to attach to the logistics dataframe. Please refresh and rerun the audit.")
+    st.stop()
 
 penalty_orders = data[data["Volumetric_Penalty"]].copy()
 total_orders = len(data)
-total_revenue = data["Revenue"].sum()
+total_revenue = data["Revenue"].sum() if has_revenue else 0
 total_loss = penalty_orders["Estimated_Loss_ZAR"].sum()
 flagged_order_count = len(penalty_orders)
 avg_vol_penalty = total_loss / flagged_order_count if flagged_order_count else 0
 c_class_count = sku_revenue[sku_revenue["ABC_Class"] == "C-Class (Dead Stock)"]["SKU"].nunique()
 a_class_count = sku_revenue[sku_revenue["ABC_Class"] == "A-Class (High Volume)"]["SKU"].nunique()
-total_dead_stock_value = sku_revenue.loc[
-    sku_revenue["ABC_Class"] == "C-Class (Dead Stock)", "Revenue"
-].sum()
-a_class_revenue = sku_revenue.loc[
-    sku_revenue["ABC_Class"] == "A-Class (High Volume)", "Revenue"
-].sum()
+total_dead_stock_value = (
+    sku_revenue.loc[sku_revenue["ABC_Class"] == "C-Class (Dead Stock)", "Revenue"].sum()
+    if has_revenue
+    else 0
+)
+a_class_revenue = (
+    sku_revenue.loc[sku_revenue["ABC_Class"] == "A-Class (High Volume)", "Revenue"].sum()
+    if has_revenue
+    else 0
+)
 a_class_revenue_share = (a_class_revenue / total_revenue * 100) if total_revenue else 0
 clothing_keywords = "t-shirt|shirt|hoodie|leggings|shorts|bra|jacket|pants|socks|top|vest|sneakers|apparel|clothing"
 clothing_skus = data[data["SKU"].str.contains(clothing_keywords, case=False, na=False)]["SKU"]
@@ -622,7 +775,16 @@ if penalty_orders.empty:
     qa_sample = None
 else:
     qa_row = penalty_orders.sample(n=1, random_state=42).iloc[0]
-    qa_optimization = get_packaging_optimization_details(qa_row, negotiated_divisor)
+    qa_optimization = get_packaging_optimization_details(
+        qa_row["Length_cm"],
+        qa_row["Width_cm"],
+        qa_row["Height_cm"],
+        qa_row["Volumetric_Weight_kg"],
+        qa_row["Actual_Weight_kg"],
+        qa_row["Penalty_Rate_ZAR"],
+        negotiated_divisor,
+        packaging_matrix,
+    )
     qa_package = qa_optimization["package"]
     qa_sample = {
         "order_id": qa_row["Order_ID"],
@@ -644,6 +806,7 @@ else:
         "new_volumetric_weight": qa_optimization["new_volumetric_weight"],
         "new_billed_weight": qa_optimization["new_billed_weight"],
         "new_penalty": qa_optimization["new_penalty"],
+        "courier_savings_zar": qa_optimization["courier_savings_zar"],
         "net_savings": qa_optimization["net_savings"],
         "optimization_failed": qa_optimization["optimization_failed"],
     }
@@ -661,10 +824,36 @@ highest_penalty_province = (
     if not province_inefficiencies.empty
     else "No flagged province"
 )
+optimization_results = data.apply(
+    lambda row: get_packaging_optimization_details(
+        row["Length_cm"],
+        row["Width_cm"],
+        row["Height_cm"],
+        row["Volumetric_Weight_kg"],
+        row["Actual_Weight_kg"],
+        row["Penalty_Rate_ZAR"],
+        negotiated_divisor,
+        packaging_matrix,
+    ),
+    axis=1,
+)
+data["Critical_Data_Error"] = optimization_results.apply(lambda result: result["critical_data_error"])
 top_penalty_orders_for_pdf = penalty_orders.sort_values("Estimated_Loss_ZAR", ascending=False)
 abc_summary_for_pdf = sku_revenue[sku_revenue["ABC_Class"].isin(["A-Class (High Volume)", "C-Class (Dead Stock)"])].copy()
 deterministic_savings_by_order = (
-    penalty_orders.apply(lambda row: optimize_packaging(row, negotiated_divisor), axis=1)
+    penalty_orders.apply(
+        lambda row: optimize_packaging(
+            row["Length_cm"],
+            row["Width_cm"],
+            row["Height_cm"],
+            row["Volumetric_Weight_kg"],
+            row["Actual_Weight_kg"],
+            row["Penalty_Rate_ZAR"],
+            negotiated_divisor,
+            packaging_matrix,
+        ),
+        axis=1,
+    )
     if not penalty_orders.empty
     else pd.Series(dtype=float)
 )
@@ -716,19 +905,21 @@ with live_tab:
     st.plotly_chart(fig, use_container_width=True)
 
     st.subheader("Orders Triggering Volumetric Penalties")
-    penalty_display = penalty_orders[
-        [
-            "Order_ID",
-            "SKU",
-            "Province",
-            "Actual_Weight_kg",
-            "Volumetric_Weight_kg",
-            "Excess_Weight_kg",
-            "Estimated_Loss_ZAR",
-            "Billed_Shipping_Cost_ZAR",
-            "ABC_Class",
-        ]
-    ].sort_values("Estimated_Loss_ZAR", ascending=False)
+    desired_columns = [
+        "Order_ID",
+        "SKU",
+        "Province",
+        "ABC_Class",
+        "Actual_Weight_kg",
+        "Volumetric_Weight_kg",
+        "Excess_Weight_kg",
+        "Estimated_Loss_ZAR",
+        "Billed_Shipping_Cost_ZAR",
+    ]
+    display_cols = [col for col in desired_columns if col in penalty_orders.columns]
+    penalty_display = penalty_orders[display_cols]
+    if "Estimated_Loss_ZAR" in penalty_display.columns:
+        penalty_display = penalty_display.sort_values("Estimated_Loss_ZAR", ascending=False)
     st.dataframe(penalty_display, use_container_width=True, hide_index=True)
 
     st.subheader("Automated Courier Dispute Generator")
@@ -750,29 +941,39 @@ with live_tab:
                 )
                 st.text_area("Courier Dispute Email", value=dispute_email, height=180)
 
-    with st.expander("ABC Inventory Analysis by SKU"):
+    with st.expander(f"ABC Inventory Analysis by {abc_metric_label}"):
         st.dataframe(sku_revenue, use_container_width=True, hide_index=True)
 
     st.divider()
     st.subheader("Formal Executive Summary & Cost-Saving Strategy")
+    abc_action_line = (
+        f"- Action: Liquidate {c_class_count:,} C-Class SKUs currently trapping capital in dead stock. Reallocate procurement budget strictly to the {a_class_count:,} A-Class SKUs driving {a_class_revenue_share:.1f}% of revenue."
+        if has_revenue
+        else f"- Action: Review {c_class_count:,} C-Class low-frequency SKUs and prioritize the {a_class_count:,} A-Class high-volume SKUs driving the majority of order activity."
+    )
     executive_summary = f"""
 The audit reveals an operational leakage of R{total_loss:,.2f} over the analyzed period due to volumetric packaging penalties.
 
 - Action: Downsize packaging for {flagged_order_count:,} identified shipments where volumetric weight exceeded actual weight. Switch to standard flyer bags for non-fragile C-Class and B-Class items.
-- Action: Liquidate {c_class_count:,} C-Class SKUs currently trapping capital in dead stock. Reallocate procurement budget strictly to the {a_class_count:,} A-Class SKUs driving 80% of revenue.
+{abc_action_line}
 """
     st.success(executive_summary)
 
     with st.expander("Data Proof Points & Deep-Dive Justification", expanded=True):
+        abc_proof = (
+            f"- **Capital Efficiency Evidence:** Your {c_class_count:,} C-Class SKUs represent an estimated **R{total_dead_stock_value:,.2f}** in stagnant, frozen capital that generated negligible returns. Conversely, your {a_class_count:,} A-Class SKUs are generating **{a_class_revenue_share:.1f}%** of your total incoming cash flow. Cutting dead stock frees up immediate working capital to reinvest where the velocity is highest."
+            if has_revenue
+            else f"- **Operational Velocity Evidence:** Revenue was not supplied, so ABC classification uses order frequency. Your {a_class_count:,} A-Class SKUs are the highest-frequency products, while {c_class_count:,} C-Class SKUs are the lowest-frequency products and should be reviewed for bundling, discontinuation, or stock-level reduction."
+        )
         st.markdown(
             f"""
             **The Packaging Tax Breakdown**
 
             - **Volumetric Penalty Evidence:** Out of the audited shipments, the average penalty paid purely for shipping empty space was **R{avg_vol_penalty:.2f} per order**. The worst-offending region was **{highest_penalty_province}**. This proves that courier companies are charging premium rates because your box selections do not match your true product sizes.
 
-            **The Frozen Capital Audit**
+            **The ABC Audit**
 
-            - **Capital Efficiency Evidence:** Your {c_class_count:,} C-Class SKUs represent an estimated **R{total_dead_stock_value:,.2f}** in stagnant, frozen capital that generated negligible returns. Conversely, your {a_class_count:,} A-Class SKUs are generating **{a_class_revenue_share:.1f}%** of your total incoming cash flow. Cutting dead stock frees up immediate working capital to reinvest where the velocity is highest.
+            {abc_proof}
             """
         )
 
@@ -784,6 +985,12 @@ The audit reveals an operational leakage of R{total_loss:,.2f} over the analyzed
 
         - **The Stock Problem:** 'Think of your store like a closet. 80% of your sales are coming from just 4 rockstar products. The other 10 items are just sitting on the shelf gathering dust and eating up your money. We are going to clear out the dust-gatherers so we can buy more of what actually sells.'
         """
+    )
+
+    phase_3_tactic = (
+        f"- Tactic: Create an aggressive 'Mystery Box' or 'Buy One A-Class Item, Get a C-Class Item for Free' weekend flash sale. The goal is to recover cost price, not make a profit, to immediately inject R{total_dead_stock_value:,.2f} back into your working capital."
+        if has_revenue
+        else "- Tactic: Create an aggressive 'Mystery Box' or 'Buy One A-Class Item, Get a C-Class Item for Free' weekend flash sale. The goal is to recover cost price, not make a profit, to immediately recover the initial manufacturing cost back into your working capital."
     )
 
     with st.expander("3-Step Execution Playbook (How to Implement These Savings)", expanded=True):
@@ -802,7 +1009,7 @@ The audit reveals an operational leakage of R{total_loss:,.2f} over the analyzed
             **Phase 3: Execute the Dead-Stock Liquidation Campaign**
 
             - Do not discount the {c_class_count:,} C-Class SKUs individually, as this devalues the brand. Instead, bundle them.
-            - Tactic: Create an aggressive 'Mystery Box' or 'Buy One A-Class Item, Get a C-Class Item for Free' weekend flash sale. The goal is to recover cost price, not make a profit, to immediately inject R{total_dead_stock_value:,.2f} back into your working capital.
+            {phase_3_tactic}
             """
         )
 
@@ -816,7 +1023,7 @@ The audit reveals an operational leakage of R{total_loss:,.2f} over the analyzed
 
                 **🔴 CURRENT STATE (The Bleed):**
                 - Raw Dimensions: {qa_sample["length"]:.1f}cm x {qa_sample["width"]:.1f}cm x {qa_sample["height"]:.1f}cm | Actual Weight: {qa_sample["actual_weight"]:.2f}kg
-                - Old Volumetric Weight: {qa_sample["volumetric_weight"]:.2f}kg | Old Billed Weight: {qa_sample["billed_weight"]:.2f}kg
+                - Original CSV Volumetric Weight: {qa_sample["volumetric_weight"]:.2f}kg | Old Billed Weight: {qa_sample["billed_weight"]:.2f}kg
                 - Old Penalty Paid: R{qa_sample["loss_zar"]:.2f}
 
                 **🟢 OPTIMIZED STATE (The Recovery):**
@@ -830,7 +1037,8 @@ The audit reveals an operational leakage of R{total_loss:,.2f} over the analyzed
                     - Matched Box: '{qa_sample["matched_package_name"]}' | Box Cost: R{qa_sample["package_cost"]:.2f}
                     - New Volumetric Weight: {qa_sample["new_volumetric_weight"]:.2f}kg | New Billed Weight: {qa_sample["new_billed_weight"]:.2f}kg
                     - New Penalty: R{qa_sample["new_penalty"]:.2f}
-                    **✅ VERIFIED NET SAVINGS:** R{qa_sample["net_savings"]:.2f} (Old Penalty - New Penalty - Box Cost)
+                    - Courier Savings: R{qa_sample["courier_savings_zar"]:.2f} ((Original CSV Volumetric Weight - New Optimized Box Volumetric Weight) * Penalty Rate)
+                    **✅ VERIFIED NET SAVINGS:** R{qa_sample["net_savings"]:.2f} (Courier Savings - Box Cost)
                     """
                 )
 
@@ -849,6 +1057,9 @@ The audit reveals an operational leakage of R{total_loss:,.2f} over the analyzed
         sku_action_matrix=sku_action_matrix,
         highest_penalty_province=highest_penalty_province,
         projected_savings=projected_savings_for_pdf,
+        abc_metric_column=abc_metric_column,
+        abc_metric_label=abc_metric_label,
+        has_revenue=has_revenue,
         prepared_by="Kyle Logistics Audit Advisory",
     )
     st.download_button(
@@ -868,10 +1079,11 @@ with simulator_tab:
     sim_2.metric("Repackable Flagged Orders", f"{(deterministic_savings_by_order > 0).sum():,}")
     sim_3.metric("Deterministically Calculated Monthly Savings", f"R{deterministic_monthly_savings:,.2f}")
     with st.expander("Standard Packaging Matrix", expanded=True):
-        st.dataframe(pd.DataFrame(standard_packaging).T, use_container_width=True)
+        st.dataframe(packaging_matrix, use_container_width=True, hide_index=True)
 
 with regional_tab:
-    st.subheader("Regional Strategy: SKU Revenue Velocity Heatmap")
+    heatmap_metric = "Revenue" if has_revenue else "Order Count"
+    st.subheader(f"Regional Strategy: SKU {heatmap_metric} Velocity Heatmap")
     province_options = ["All Provinces"] + sorted(data["Province"].dropna().unique().tolist())
     sku_options = ["All SKUs"] + sorted(data["SKU"].dropna().unique().tolist())
     filter_col, explanation_col = st.columns([1, 2])
@@ -887,18 +1099,28 @@ with regional_tab:
     if selected_heatmap_sku != "All SKUs":
         heatmap_source = heatmap_source[heatmap_source["SKU"] == selected_heatmap_sku]
 
-    heatmap_data = heatmap_source.groupby(["Province", "SKU"], as_index=False)["Revenue"].sum()
+    if has_revenue:
+        heatmap_data = heatmap_source.groupby(["Province", "SKU"], as_index=False)["Revenue"].sum()
+        heatmap_z = "Revenue"
+        heatmap_labels = {"Revenue": "Revenue (ZAR)"}
+        empty_message = "No revenue data matches the selected heatmap filters."
+    else:
+        heatmap_data = heatmap_source.groupby(["Province", "SKU"], as_index=False).agg(Order_Count=("Order_ID", "count"))
+        heatmap_z = "Order_Count"
+        heatmap_labels = {"Order_Count": "Order Count"}
+        empty_message = "No order data matches the selected heatmap filters."
+
     if heatmap_data.empty:
-        st.warning("No revenue data matches the selected heatmap filters.")
+        st.warning(empty_message)
     else:
         heatmap = px.density_heatmap(
             heatmap_data,
             x="Province",
             y="SKU",
-            z="Revenue",
+            z=heatmap_z,
             histfunc="sum",
             color_continuous_scale="Viridis",
-            labels={"Revenue": "Revenue (ZAR)"},
+            labels=heatmap_labels,
         )
         heatmap.update_layout(height=700)
         st.plotly_chart(heatmap, use_container_width=True)
