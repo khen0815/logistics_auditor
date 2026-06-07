@@ -2,6 +2,9 @@ streamlit
 pandas
 plotly
 openpyxl
+xlsxwriter
 pdfplumber
 fpdf2
 supabase
+markdown2
+weasyprint

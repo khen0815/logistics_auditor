@@ -421,6 +421,93 @@ class MarginPDF(FPDF):
         self.cell(0, 6, f"Page {self.page_no()} of {{nb}}", align="R")
 
 
+def generate_dispute_pack_xlsx(dispute_rows):
+    """Generate a client-ready Excel dispute pack with only flagged courier overcharges."""
+    export_columns = {
+        "Order_ID": "Waybill Number",
+        "SKU": "Item SKU",
+        "Actual_Weight_KG": "Actual Weight (kg)",
+        "Billed_Vol_KG": "Billed Volumetric (kg)",
+        "Recoverable_Overcharge_ZAR": "Overcharge Amount (ZAR)",
+        "Anomaly_Reason": "Dispute Reason",
+    }
+    clean_columns = list(export_columns.values())
+    available_columns = [col for col in export_columns if col in dispute_rows.columns]
+
+    dispute_pack = dispute_rows[available_columns].copy() if available_columns else pd.DataFrame()
+    dispute_pack = dispute_pack.rename(columns=export_columns)
+    for clean_col in clean_columns:
+        if clean_col not in dispute_pack.columns:
+            dispute_pack[clean_col] = ""
+    dispute_pack = dispute_pack[clean_columns]
+
+    for col in ["Actual Weight (kg)", "Billed Volumetric (kg)", "Overcharge Amount (ZAR)"]:
+        dispute_pack[col] = pd.to_numeric(dispute_pack[col], errors="coerce").fillna(0)
+
+    total_recoverable = dispute_pack["Overcharge Amount (ZAR)"].sum()
+    totals_row = {
+        "Waybill Number": "",
+        "Item SKU": "",
+        "Actual Weight (kg)": "",
+        "Billed Volumetric (kg)": "TOTAL RECOVERABLE:",
+        "Overcharge Amount (ZAR)": total_recoverable,
+        "Dispute Reason": "",
+    }
+    dispute_pack = pd.concat([dispute_pack, pd.DataFrame([totals_row])], ignore_index=True)
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        sheet_name = "Dispute Pack"
+        dispute_pack.to_excel(writer, index=False, sheet_name=sheet_name)
+        workbook = writer.book
+        worksheet = writer.sheets[sheet_name]
+
+        header_format = workbook.add_format({"bold": True, "bg_color": "#E5E7EB", "font_color": "#111827", "border": 1, "align": "center", "valign": "vcenter"})
+        text_format = workbook.add_format({"border": 1, "valign": "top"})
+        weight_format = workbook.add_format({"num_format": "0.00", "border": 1, "valign": "top"})
+        currency_format = workbook.add_format({"num_format": "R #,##0.00", "border": 1, "valign": "top"})
+        total_label_format = workbook.add_format({"bold": True, "border": 1, "align": "right", "valign": "top", "bg_color": "#F3F4F6"})
+        total_currency_format = workbook.add_format({"bold": True, "num_format": "R #,##0.00", "border": 1, "valign": "top", "bg_color": "#F3F4F6"})
+
+        for col_idx, column_name in enumerate(dispute_pack.columns):
+            worksheet.write(0, col_idx, column_name, header_format)
+
+        actual_weight_col = dispute_pack.columns.get_loc("Actual Weight (kg)")
+        billed_vol_col = dispute_pack.columns.get_loc("Billed Volumetric (kg)")
+        overcharge_col = dispute_pack.columns.get_loc("Overcharge Amount (ZAR)")
+        last_excel_row = len(dispute_pack)
+
+        for row_idx in range(1, last_excel_row + 1):
+            is_total_row = row_idx == last_excel_row
+            for col_idx, column_name in enumerate(dispute_pack.columns):
+                value = dispute_pack.iloc[row_idx - 1, col_idx]
+                if is_total_row and col_idx == billed_vol_col:
+                    worksheet.write(row_idx, col_idx, value, total_label_format)
+                elif is_total_row and col_idx == overcharge_col:
+                    worksheet.write_number(row_idx, col_idx, safe_float(value), total_currency_format)
+                elif col_idx in [actual_weight_col, billed_vol_col] and not is_total_row:
+                    worksheet.write_number(row_idx, col_idx, safe_float(value), weight_format)
+                elif col_idx == overcharge_col and not is_total_row:
+                    worksheet.write_number(row_idx, col_idx, safe_float(value), currency_format)
+                else:
+                    worksheet.write(row_idx, col_idx, value, text_format)
+
+        for col_idx, column_name in enumerate(dispute_pack.columns):
+            column_values = dispute_pack[column_name].astype(str).tolist()
+            max_content_width = max([len(str(column_name))] + [len(value) for value in column_values])
+            if column_name == "Dispute Reason":
+                width = min(max(max_content_width + 4, 45), 85)
+            else:
+                width = min(max(max_content_width + 4, 14), 32)
+            worksheet.set_column(col_idx, col_idx, width)
+
+        worksheet.freeze_panes(1, 0)
+        worksheet.autofilter(0, 0, last_excel_row, len(dispute_pack.columns) - 1)
+
+    output.seek(0)
+    return output.getvalue()
+
+
 def generate_margin_pdf(data, anomaly_rows, packaging_rows, capital_trap_skus, courier_name, divisor, pillar_a_loss, pillar_b_loss):
     pdf = MarginPDF()
     pdf.alias_nb_pages()
@@ -661,6 +748,124 @@ pillar_b_loss = packaging_rows["Avoidable_Volumetric_Leak_ZAR"].sum()
 capital_trap_count = analysis_data["Capital_Trap_Flag"].sum()
 multi_item_orders = analysis_data[analysis_data["Is_Multi_Item"]]["Order_ID"].nunique()
 
+st.sidebar.divider()
+consultant_password = st.sidebar.text_input(
+    " ",
+    type="password",
+    placeholder="",
+    label_visibility="collapsed",
+    key="consultant_mode_password",
+)
+
+if consultant_password == "pixie":
+    st.sidebar.divider()
+    st.sidebar.header("Consultant Module")
+
+    estimated_monthly_spend = (
+        pd.to_numeric(analysis_data["Billed_Cost_ZAR"], errors="coerce")
+        .fillna(0)
+        .sum()
+    )
+    direct_monthly_leakage = float(pillar_a_loss + pillar_b_loss)
+    modelled_monthly_risk = estimated_monthly_spend * 0.05
+    annual_margin_risk = modelled_monthly_risk * 12
+
+    pricing_tiers = {
+        "Tier 1": {
+            "label": "Tier 1: Courier Control",
+            "condition": "< R50k monthly courier spend",
+            "setup_fee": 9_500,
+            "retainer_fee": 7_500,
+        },
+        "Tier 2": {
+            "label": "Tier 2: Margin Protection",
+            "condition": "R50k–R150k monthly courier spend",
+            "setup_fee": 18_000,
+            "retainer_fee": 14_500,
+        },
+        "Tier 3": {
+            "label": "Tier 3: Logistics Governance",
+            "condition": "> R150k monthly courier spend",
+            "setup_fee": 32_000,
+            "retainer_fee": 29_000,
+        },
+    }
+
+    if estimated_monthly_spend < 50_000:
+        calculated_tier_key = "Tier 1"
+    elif estimated_monthly_spend <= 150_000:
+        calculated_tier_key = "Tier 2"
+    else:
+        calculated_tier_key = "Tier 3"
+
+    calculated_tier = pricing_tiers[calculated_tier_key]
+
+    if direct_monthly_leakage < calculated_tier["retainer_fee"]:
+        value_anchor = max(direct_monthly_leakage, modelled_monthly_risk)
+        recommended_retainer = min(
+            calculated_tier["retainer_fee"],
+            max(2_500, int(round((value_anchor * 0.50) / 500) * 500)),
+        )
+        recommended_setup = min(
+            calculated_tier["setup_fee"],
+            max(4_500, int(round((direct_monthly_leakage * 1.50) / 500) * 500)),
+        )
+        pricing_note = "Beta / value-protected pricing recommended because observed leakage is below the list retainer."
+    else:
+        recommended_retainer = calculated_tier["retainer_fee"]
+        recommended_setup = calculated_tier["setup_fee"]
+        pricing_note = "List pricing is commercially defensible against observed leakage."
+
+    st.sidebar.caption(f"Detected: {calculated_tier['label']}")
+    st.sidebar.caption(calculated_tier["condition"])
+    st.sidebar.caption(pricing_note)
+
+    setup_fee = st.sidebar.number_input(
+        "Setup Fee / Historical Audit Fee",
+        min_value=0,
+        value=recommended_setup,
+        step=500,
+        format="%d",
+        key="consultant_setup_fee",
+        help="Editable for manual overrides or beta discounts.",
+    )
+
+    retainer_fee = st.sidebar.number_input(
+        "Monthly Retainer Fee",
+        min_value=0,
+        value=recommended_retainer,
+        step=500,
+        format="%d",
+        key="consultant_retainer_fee",
+        help="Editable for manual overrides or beta discounts.",
+    )
+
+    annual_retainer = retainer_fee * 12
+
+    st.sidebar.subheader("Pricing Dashboard")
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("Setup", f"R{setup_fee:,.0f}")
+    col2.metric("Retainer", f"R{retainer_fee:,.0f}/mo")
+
+    st.sidebar.metric("Estimated Monthly Courier Spend", f"R{estimated_monthly_spend:,.0f}")
+    st.sidebar.metric("Observed Direct Leakage", f"R{direct_monthly_leakage:,.0f}")
+    st.sidebar.metric(
+        "Annual Margin Risk",
+        f"R{annual_margin_risk:,.0f}",
+        help="Calculated as 5% of estimated monthly courier spend, annualised.",
+    )
+    st.sidebar.info(
+        f"List tier: R{calculated_tier['retainer_fee']:,.0f}/mo. "
+        f"Your proposed retainer: R{annual_retainer:,.0f}/year. "
+        "Cost of internal hire: ~R300k/year."
+    )
+
+    if retainer_fee > direct_monthly_leakage and direct_monthly_leakage > 0:
+        st.sidebar.warning(
+            "Retainer is above the observed direct leakage. Pitch this as governance, prevention, and beta monitoring — not as immediate monthly savings."
+        )
+
+
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Pillar A: Courier Recoverable", f"R{pillar_a_loss:,.2f}", f"{len(anomaly_rows):,} rows", help="Money potentially recoverable from courier billing anomalies such as extreme billed volumetric weight or impossible dimensions.")
 k2.metric("Pillar B: Packaging Leak", f"R{pillar_b_loss:,.2f}", f"{len(packaging_rows):,} rows", help="Avoidable warehouse-side leakage from single-item flyer opportunities and multi-item packaging bloat.")
@@ -707,7 +912,14 @@ with anomaly_tab:
         st.write("This tab finds orders where the courier bill looks suspicious. If a parcel weighs 1kg but the courier bills it like it takes up the space of 5kg or more, you may be paying an unfair 'empty air' tax. These rows are your dispute list.")
     cols = ["Order_ID", "SKU", "Province", "Actual_Weight_KG", "Billed_Vol_KG", "Anomaly_Reason", "Recoverable_Overcharge_ZAR", "Billed_Cost_ZAR"]
     st.dataframe(anomaly_rows[[col for col in cols if col in anomaly_rows.columns]], use_container_width=True, hide_index=True)
-    st.download_button("Download Courier Dispute CSV", anomaly_rows.to_csv(index=False).encode("utf-8"), "courier_dispute_rows.csv", "text/csv", help="Exports the exact anomaly rows to send to the courier billing team.")
+    st.download_button(
+        "Export Dispute Pack",
+        generate_dispute_pack_xlsx(anomaly_rows),
+        "courier_dispute_pack.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        help="Downloads a professional Excel dispute pack containing only flagged courier overcharges.",
+    )
 
 with packaging_tab:
     st.subheader("Pillar B: Workflow & Packaging Inefficiency")
@@ -719,6 +931,54 @@ with packaging_tab:
         by_reason = packaging_rows.groupby("Packaging_Reason", as_index=False)["Avoidable_Volumetric_Leak_ZAR"].sum()
         st.plotly_chart(px.pie(by_reason, names="Packaging_Reason", values="Avoidable_Volumetric_Leak_ZAR", color_discrete_sequence=px.colors.qualitative.Safe, template="plotly_white"), use_container_width=True)
     st.download_button("Download Packaging Leak CSV", packaging_rows.to_csv(index=False).encode("utf-8"), "packaging_leak_rows.csv", "text/csv", help="Exports single-item flyer opportunities and multi-item packaging bloat rows.")
+
+if consultant_password == "pixie":
+    st.divider()
+    st.subheader("Automated Pitch Engine")
+    pitch_company_name = st.text_input(
+        "Company Name",
+        value=selected_client_name if selected_client_name != "Local Client" else "",
+        key="pitch_company_name",
+    )
+    pitch_founder_name = st.text_input(
+        "Founder Name",
+        key="pitch_founder_name",
+    )
+    pitch_brand_context = st.text_area(
+        "Brand Context",
+        placeholder="e.g., Premium athleisure brand dominating the Cape Town market with sustainable materials...",
+        key="pitch_brand_context",
+    )
+
+    worst_sku = "your highest-risk SKU"
+    if not capital_trap_skus.empty and "SKU" in capital_trap_skus.columns:
+        worst_sku = safe_text(capital_trap_skus.iloc[0]["SKU"], worst_sku)
+    elif not packaging_rows.empty and "SKU" in packaging_rows.columns:
+        worst_sku = safe_text(packaging_rows.iloc[0]["SKU"], worst_sku)
+
+    total_recoverable = safe_float(pillar_a_loss)
+    total_avoidable = safe_float(pillar_b_loss)
+    annualized_loss = (total_recoverable + total_avoidable) * 12
+    company_for_pitch = pitch_company_name.strip() or "your company"
+    founder_for_pitch = pitch_founder_name.strip() or "there"
+    context_for_pitch = pitch_brand_context.strip() or "the brand positioning and operational momentum you are building"
+
+    pitch_text = f"""Hi {founder_for_pitch},
+
+I just finished running the historical logistics audit on the dataset you sent over. First off, I love what {company_for_pitch} is doing—{context_for_pitch} is a massive differentiator right now.
+
+I wanted to get straight to the numbers. The engine flagged two major structural leaks in your current shipping setup:
+
+1. Courier Glitches: I have isolated exactly R{total_recoverable:,.2f} in pure courier overcharges from last month. I've attached the Dispute Pack—you can forward this straight to your account manager to get that cash credited back.
+2. Packaging Bloat: We found that oversized packaging, specifically on orders containing the {worst_sku}, is triggering an additional R{total_avoidable:,.2f} in unnecessary volumetric penalties.
+
+If we annualize these figures, {company_for_pitch} is quietly losing over R{annualized_loss:,.2f} this year just to un-optimized dispatch logistics.
+
+I’d love to jump on a quick 15-minute Google Meet this week to walk you through the visual dashboard and show you exactly how to plug these holes.
+
+Let me know what day works best for you."""
+
+    st.code(pitch_text, language="text")
 
 with velocity_tab:
     st.subheader("Pillar C: SKU Velocity & Trapped Capital")
