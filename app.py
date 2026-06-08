@@ -20,6 +20,7 @@ st.set_page_config(
 
 STANDARD_COLUMNS = [
     "Order_ID",
+    "Waybill_ID",
     "SKU",
     "Province",
     "Actual_Weight_KG",
@@ -48,24 +49,38 @@ COLUMN_SYNONYMS = {
     "Province": ["province", "destination province", "dest province", "region", "zone", "destination", "ship province"],
     "Actual_Weight_KG": [
         "actual kg", "actual weight", "actual weight kg", "actual_weight_kg", "wgt", "weight", "weight kg",
-        "mass", "actual mass", "dead weight", "scale weight", "parcel weight",
+        "mass", "actual mass", "dead weight", "scale weight", "parcel weight", "submitted weight kg",
     ],
     "Billed_Vol_KG": [
         "vol wgt", "vol weight", "volumetric weight", "volumetric weight kg", "billed volumetric",
         "billed volumetric weight", "billed vol", "billed vol kg", "billed_vol_kg", "chargeable weight",
-        "billed weight", "csv volumetric weight", "vol kg",
+        "billed weight", "csv volumetric weight", "vol kg", "charged weight kg",
     ],
     "Billed_Cost_ZAR": [
         "billed amount", "cost zar", "billed cost", "billed cost zar", "amount", "charge", "shipping cost",
         "shipping cost zar", "billed shipping cost", "billed shipping cost zar", "total", "invoice amount",
-        "courier cost", "freight charge",
+        "courier cost", "freight charge", "charged rate incl vat",
     ],
     "Length_cm": ["l", "len", "length", "length cm", "length (cm)", "length_cm", "parcel length"],
     "Width_cm": ["w", "wid", "width", "width cm", "width (cm)", "width_cm", "parcel width"],
     "Height_cm": ["h", "hei", "height", "height cm", "height (cm)", "height_cm", "parcel height"],
-    "Dimensions": ["dimensions", "dims", "parcel dimensions", "size", "l x w x h", "lxwxh"],
+    "Dimensions": ["dimensions", "dims", "parcel dimensions", "size", "l x w x h", "lxwxh", "submitted dimensions"],
     "Revenue": ["revenue", "sales value", "item price", "selling price", "order value"],
 }
+
+BOB_GO_DIRECT_MAPPINGS = {
+    "submitted weight kg": "Actual_Weight_KG",
+    "charged weight kg": "Billed_Vol_KG",
+    "charged rate incl vat": "Billed_Cost_ZAR",
+}
+
+BOB_GO_DIMENSION_PATTERN = re.compile(
+    r"^\s*(?P<waybill>[^\s\-–—]+).*?"
+    r"(?P<length>\d+(?:\.\d+)?)\s*cm\s*x\s*"
+    r"(?P<width>\d+(?:\.\d+)?)\s*cm\s*x\s*"
+    r"(?P<height>\d+(?:\.\d+)?)\s*cm",
+    re.I,
+)
 
 DEFAULT_PACKAGING_MATRIX = pd.DataFrame(
     [
@@ -122,6 +137,20 @@ def parse_dimensions(value):
     return [float(numbers[0]), float(numbers[1]), float(numbers[2])]
 
 
+def parse_bob_go_dimensions(value):
+    if pd.isna(value):
+        return {"Waybill_ID": pd.NA, "Length_cm": pd.NA, "Width_cm": pd.NA, "Height_cm": pd.NA}
+    match = BOB_GO_DIMENSION_PATTERN.search(str(value))
+    if not match:
+        return {"Waybill_ID": pd.NA, "Length_cm": pd.NA, "Width_cm": pd.NA, "Height_cm": pd.NA}
+    return {
+        "Waybill_ID": match.group("waybill"),
+        "Length_cm": float(match.group("length")),
+        "Width_cm": float(match.group("width")),
+        "Height_cm": float(match.group("height")),
+    }
+
+
 def safe_float(value, default=0.0):
     value = pd.to_numeric(value, errors="coerce")
     return float(value) if pd.notna(value) else default
@@ -133,21 +162,64 @@ def safe_text(value, default="Unknown"):
     return str(value).strip()
 
 
+def format_currency(value, currency_prefix):
+    return f"{currency_prefix}{safe_float(value):,.2f}"
+
+
+def format_currency_whole(value, currency_prefix):
+    return f"{currency_prefix}{safe_float(value):,.0f}"
+
+
+def display_currency_columns(df, currency_symbol):
+    return df.rename(
+        columns={
+            "Billed_Cost_ZAR": f"Billed_Cost_{currency_symbol}",
+            "Estimated_Loss_ZAR": f"Estimated_Loss_{currency_symbol}",
+            "Recoverable_Overcharge_ZAR": f"Recoverable_Overcharge_{currency_symbol}",
+            "Avoidable_Volumetric_Leak_ZAR": f"Avoidable_Volumetric_Leak_{currency_symbol}",
+            "SKU_Total_Shipping_Cost_ZAR": f"SKU_Total_Shipping_Cost_{currency_symbol}",
+            "SKU_Total_Leakage_ZAR": f"SKU_Total_Leakage_{currency_symbol}",
+            "Multi_Item_Leak_ZAR": f"Multi_Item_Leak_{currency_symbol}",
+        }
+    )
+
+
 def clean_and_standardize_data(df):
     """Map messy courier exports into a deterministic standard schema without crashing on bad rows."""
     cleaned = df.copy()
     cleaned.columns = [str(col).strip() for col in cleaned.columns]
 
+    bob_go_dimensions_col = next((col for col in ["Charged dimensions", "Submitted dimensions"] if col in cleaned.columns), None)
+    bob_go_parsed = None
+    if bob_go_dimensions_col:
+        bob_go_parsed = pd.DataFrame(
+            cleaned[bob_go_dimensions_col].apply(parse_bob_go_dimensions).tolist(),
+            index=cleaned.index,
+            columns=["Waybill_ID", "Length_cm", "Width_cm", "Height_cm"],
+        )
+
     rename_map = {}
     used_standard_names = set()
     for original in cleaned.columns:
-        standard = ALIAS_LOOKUP.get(normalize_label(original))
+        normalized = normalize_label(original)
+        standard = BOB_GO_DIRECT_MAPPINGS.get(normalized) or ALIAS_LOOKUP.get(normalized)
         if standard and standard not in used_standard_names:
             rename_map[original] = standard
             used_standard_names.add(standard)
     cleaned = cleaned.rename(columns=rename_map)
 
     try:
+        if bob_go_parsed is not None:
+            for col in ["Waybill_ID", "Length_cm", "Width_cm", "Height_cm"]:
+                if col not in cleaned.columns:
+                    cleaned[col] = bob_go_parsed[col]
+                else:
+                    cleaned[col] = cleaned[col].combine_first(bob_go_parsed[col])
+            if "Order_ID" not in cleaned.columns:
+                cleaned["Order_ID"] = cleaned["Waybill_ID"]
+            else:
+                cleaned["Order_ID"] = cleaned["Order_ID"].combine_first(cleaned["Waybill_ID"])
+
         if "Dimensions" in cleaned.columns:
             parsed_dims = cleaned["Dimensions"].apply(parse_dimensions)
             if "Length_cm" not in cleaned.columns:
@@ -421,14 +493,15 @@ class MarginPDF(FPDF):
         self.cell(0, 6, f"Page {self.page_no()} of {{nb}}", align="R")
 
 
-def generate_dispute_pack_xlsx(dispute_rows):
+def generate_dispute_pack_xlsx(dispute_rows, currency_symbol, currency_prefix):
     """Generate a client-ready Excel dispute pack with only flagged courier overcharges."""
+    overcharge_label = f"Overcharge Amount ({currency_symbol})"
     export_columns = {
         "Order_ID": "Waybill Number",
         "SKU": "Item SKU",
         "Actual_Weight_KG": "Actual Weight (kg)",
         "Billed_Vol_KG": "Billed Volumetric (kg)",
-        "Recoverable_Overcharge_ZAR": "Overcharge Amount (ZAR)",
+        "Recoverable_Overcharge_ZAR": overcharge_label,
         "Anomaly_Reason": "Dispute Reason",
     }
     clean_columns = list(export_columns.values())
@@ -441,16 +514,16 @@ def generate_dispute_pack_xlsx(dispute_rows):
             dispute_pack[clean_col] = ""
     dispute_pack = dispute_pack[clean_columns]
 
-    for col in ["Actual Weight (kg)", "Billed Volumetric (kg)", "Overcharge Amount (ZAR)"]:
+    for col in ["Actual Weight (kg)", "Billed Volumetric (kg)", overcharge_label]:
         dispute_pack[col] = pd.to_numeric(dispute_pack[col], errors="coerce").fillna(0)
 
-    total_recoverable = dispute_pack["Overcharge Amount (ZAR)"].sum()
+    total_recoverable = dispute_pack[overcharge_label].sum()
     totals_row = {
         "Waybill Number": "",
         "Item SKU": "",
         "Actual Weight (kg)": "",
         "Billed Volumetric (kg)": "TOTAL RECOVERABLE:",
-        "Overcharge Amount (ZAR)": total_recoverable,
+        overcharge_label: total_recoverable,
         "Dispute Reason": "",
     }
     dispute_pack = pd.concat([dispute_pack, pd.DataFrame([totals_row])], ignore_index=True)
@@ -465,16 +538,16 @@ def generate_dispute_pack_xlsx(dispute_rows):
         header_format = workbook.add_format({"bold": True, "bg_color": "#E5E7EB", "font_color": "#111827", "border": 1, "align": "center", "valign": "vcenter"})
         text_format = workbook.add_format({"border": 1, "valign": "top"})
         weight_format = workbook.add_format({"num_format": "0.00", "border": 1, "valign": "top"})
-        currency_format = workbook.add_format({"num_format": "R #,##0.00", "border": 1, "valign": "top"})
+        currency_format = workbook.add_format({"num_format": f"{currency_prefix} #,##0.00", "border": 1, "valign": "top"})
         total_label_format = workbook.add_format({"bold": True, "border": 1, "align": "right", "valign": "top", "bg_color": "#F3F4F6"})
-        total_currency_format = workbook.add_format({"bold": True, "num_format": "R #,##0.00", "border": 1, "valign": "top", "bg_color": "#F3F4F6"})
+        total_currency_format = workbook.add_format({"bold": True, "num_format": f"{currency_prefix} #,##0.00", "border": 1, "valign": "top", "bg_color": "#F3F4F6"})
 
         for col_idx, column_name in enumerate(dispute_pack.columns):
             worksheet.write(0, col_idx, column_name, header_format)
 
         actual_weight_col = dispute_pack.columns.get_loc("Actual Weight (kg)")
         billed_vol_col = dispute_pack.columns.get_loc("Billed Volumetric (kg)")
-        overcharge_col = dispute_pack.columns.get_loc("Overcharge Amount (ZAR)")
+        overcharge_col = dispute_pack.columns.get_loc(overcharge_label)
         last_excel_row = len(dispute_pack)
 
         for row_idx in range(1, last_excel_row + 1):
@@ -508,7 +581,7 @@ def generate_dispute_pack_xlsx(dispute_rows):
     return output.getvalue()
 
 
-def generate_margin_pdf(data, anomaly_rows, packaging_rows, capital_trap_skus, courier_name, divisor, pillar_a_loss, pillar_b_loss):
+def generate_margin_pdf(data, anomaly_rows, packaging_rows, capital_trap_skus, courier_name, divisor, pillar_a_loss, pillar_b_loss, currency_prefix):
     pdf = MarginPDF()
     pdf.alias_nb_pages()
     pdf.set_margins(15, 24, 15)
@@ -520,7 +593,7 @@ def generate_margin_pdf(data, anomaly_rows, packaging_rows, capital_trap_skus, c
             pdf.add_page()
 
     def money(value):
-        return f"R{safe_float(value):,.2f}"
+        return format_currency(value, currency_prefix)
 
     def truncate(value, limit):
         value = "" if pd.isna(value) else str(value)
@@ -635,7 +708,19 @@ st.markdown(
 )
 
 st.title("360° Margin Diagnostic Engine")
-st.caption("A light-mode diagnostic dashboard for South African e-commerce brands using Bob Go, The Courier Guy, and messy courier exports.")
+st.caption("A light-mode diagnostic dashboard for South African and Botswana e-commerce brands using Bob Go, The Courier Guy, and messy courier exports.")
+
+selected_region = st.sidebar.selectbox("Select Region", ["South Africa", "Botswana"])
+REGION_CONFIG = {
+    "South Africa": {"currency_symbol": "ZAR", "currency_prefix": "R", "avg_shipping_cost": 120},
+    "Botswana": {"currency_symbol": "BWP", "currency_prefix": "P", "avg_shipping_cost": 80},
+}
+region_config = REGION_CONFIG[selected_region]
+currency_symbol = region_config["currency_symbol"]
+currency_prefix = region_config["currency_prefix"]
+avg_shipping_cost = region_config["avg_shipping_cost"]
+st.sidebar.caption(f"Currency: {currency_symbol} | Average shipping cost: {format_currency(avg_shipping_cost, currency_prefix)}")
+st.sidebar.divider()
 
 supabase = get_supabase_client()
 if supabase is None:
@@ -662,12 +747,12 @@ volumetric_divisor = st.sidebar.number_input(
     help="Courier formula divisor: Length × Width × Height ÷ Divisor = volumetric kilograms. Keep this aligned with the client's actual rate card.",
 )
 excess_penalty_per_kg = st.sidebar.number_input(
-    "Average Excess Penalty per Kg (ZAR)",
+    f"Average Excess Penalty per Kg ({currency_symbol})",
     min_value=0.0,
     value=15.0,
     step=0.5,
     format="%.2f",
-    help="The estimated rand cost per excess billed kilogram. Used to convert volumetric leakage into ZAR exposure.",
+    help=f"The estimated {currency_symbol} cost per excess billed kilogram. Used to convert volumetric leakage into {currency_symbol} exposure.",
 )
 negotiated_divisor = st.sidebar.slider(
     "Packaging Simulation Divisor",
@@ -716,7 +801,7 @@ with st.expander("Packaging Matrix Configuration", expanded=False):
             "L": st.column_config.NumberColumn("Length (cm)", min_value=0.1, help="Outer package length in centimeters."),
             "W": st.column_config.NumberColumn("Width (cm)", min_value=0.1, help="Outer package width in centimeters."),
             "H": st.column_config.NumberColumn("Height (cm)", min_value=0.1, help="Outer package height in centimeters."),
-            "cost": st.column_config.NumberColumn("Cost (ZAR)", min_value=0.0, help="Packaging material cost subtracted from savings."),
+            "cost": st.column_config.NumberColumn(f"Cost ({currency_symbol})", min_value=0.0, help="Packaging material cost subtracted from savings."),
             "Fragile/Void Fill Required": st.column_config.CheckboxColumn("Fragile/Void Fill Required", help="If checked, the model reserves 15% internal space for protection."),
         },
     )
@@ -773,19 +858,19 @@ if consultant_password == "pixie":
     pricing_tiers = {
         "Tier 1": {
             "label": "Tier 1: Courier Control",
-            "condition": "< R50k monthly courier spend",
+            "condition": f"< {format_currency_whole(50_000, currency_prefix)} monthly courier spend",
             "setup_fee": 9_500,
             "retainer_fee": 7_500,
         },
         "Tier 2": {
             "label": "Tier 2: Margin Protection",
-            "condition": "R50k–R150k monthly courier spend",
+            "condition": f"{format_currency_whole(50_000, currency_prefix)}–{format_currency_whole(150_000, currency_prefix)} monthly courier spend",
             "setup_fee": 18_000,
             "retainer_fee": 14_500,
         },
         "Tier 3": {
             "label": "Tier 3: Logistics Governance",
-            "condition": "> R150k monthly courier spend",
+            "condition": f"> {format_currency_whole(150_000, currency_prefix)} monthly courier spend",
             "setup_fee": 32_000,
             "retainer_fee": 29_000,
         },
@@ -844,20 +929,20 @@ if consultant_password == "pixie":
 
     st.sidebar.subheader("Pricing Dashboard")
     col1, col2 = st.sidebar.columns(2)
-    col1.metric("Setup", f"R{setup_fee:,.0f}")
-    col2.metric("Retainer", f"R{retainer_fee:,.0f}/mo")
+    col1.metric("Setup", format_currency_whole(setup_fee, currency_prefix))
+    col2.metric("Retainer", f"{format_currency_whole(retainer_fee, currency_prefix)}/mo")
 
-    st.sidebar.metric("Estimated Monthly Courier Spend", f"R{estimated_monthly_spend:,.0f}")
-    st.sidebar.metric("Observed Direct Leakage", f"R{direct_monthly_leakage:,.0f}")
+    st.sidebar.metric("Estimated Monthly Courier Spend", format_currency_whole(estimated_monthly_spend, currency_prefix))
+    st.sidebar.metric("Observed Direct Leakage", format_currency_whole(direct_monthly_leakage, currency_prefix))
     st.sidebar.metric(
         "Annual Margin Risk",
-        f"R{annual_margin_risk:,.0f}",
+        format_currency_whole(annual_margin_risk, currency_prefix),
         help="Calculated as 5% of estimated monthly courier spend, annualised.",
     )
     st.sidebar.info(
-        f"List tier: R{calculated_tier['retainer_fee']:,.0f}/mo. "
-        f"Your proposed retainer: R{annual_retainer:,.0f}/year. "
-        "Cost of internal hire: ~R300k/year."
+        f"List tier: {format_currency_whole(calculated_tier['retainer_fee'], currency_prefix)}/mo. "
+        f"Your proposed retainer: {format_currency_whole(annual_retainer, currency_prefix)}/year. "
+        f"Cost of internal hire: ~{format_currency_whole(300_000, currency_prefix)}/year."
     )
 
     if retainer_fee > direct_monthly_leakage and direct_monthly_leakage > 0:
@@ -867,8 +952,8 @@ if consultant_password == "pixie":
 
 
 k1, k2, k3, k4 = st.columns(4)
-k1.metric("Pillar A: Courier Recoverable", f"R{pillar_a_loss:,.2f}", f"{len(anomaly_rows):,} rows", help="Money potentially recoverable from courier billing anomalies such as extreme billed volumetric weight or impossible dimensions.")
-k2.metric("Pillar B: Packaging Leak", f"R{pillar_b_loss:,.2f}", f"{len(packaging_rows):,} rows", help="Avoidable warehouse-side leakage from single-item flyer opportunities and multi-item packaging bloat.")
+k1.metric("Pillar A: Courier Recoverable", format_currency(pillar_a_loss, currency_prefix), f"{len(anomaly_rows):,} rows", help="Money potentially recoverable from courier billing anomalies such as extreme billed volumetric weight or impossible dimensions.")
+k2.metric("Pillar B: Packaging Leak", format_currency(pillar_b_loss, currency_prefix), f"{len(packaging_rows):,} rows", help="Avoidable warehouse-side leakage from single-item flyer opportunities and multi-item packaging bloat.")
 k3.metric("Pillar C: Capital Traps", f"{int(capital_trap_count):,}", "flagged lines", help="C-Class low-velocity SKUs that also incur high shipping costs to distant or remote zones.")
 k4.metric("Mixed-Basket Orders", f"{multi_item_orders:,}", "multi-item", help="Calculates the combined physical volume of all items in a single order plus a 20% buffer for packaging material.")
 
@@ -880,18 +965,19 @@ with summary_tab:
         f"""
         <div class="info-card">
         The engine standardized <b>{len(raw_data):,}</b> raw courier rows and retained <b>{len(analysis_data):,}</b> rows for deterministic pillar analysis.
-        Total direct leakage identified is <b>R{pillar_a_loss + pillar_b_loss:,.2f}</b>, split into courier-dispute exposure and warehouse packaging exposure.
+        Total direct leakage identified is <b>{format_currency(pillar_a_loss + pillar_b_loss, currency_prefix)}</b>, split into courier-dispute exposure and warehouse packaging exposure.
         </div>
         """,
         unsafe_allow_html=True,
     )
+    leakage_column = f"Leakage_{currency_symbol}"
     chart_data = pd.DataFrame([
-        {"Pillar": "A: Courier Billing Anomalies", "Leakage_ZAR": pillar_a_loss},
-        {"Pillar": "B: Packaging Inefficiency", "Leakage_ZAR": pillar_b_loss},
+        {"Pillar": "A: Courier Billing Anomalies", leakage_column: pillar_a_loss},
+        {"Pillar": "B: Packaging Inefficiency", leakage_column: pillar_b_loss},
     ])
-    st.plotly_chart(px.bar(chart_data, x="Pillar", y="Leakage_ZAR", text_auto=".2s", color="Pillar", color_discrete_sequence=["#2563eb", "#16a34a"], template="plotly_white"), use_container_width=True)
+    st.plotly_chart(px.bar(chart_data, x="Pillar", y=leakage_column, text_auto=".2s", color="Pillar", color_discrete_sequence=["#2563eb", "#16a34a"], template="plotly_white"), use_container_width=True)
 
-    pdf_report = generate_margin_pdf(analysis_data, anomaly_rows, packaging_rows, capital_trap_skus, courier_provider, volumetric_divisor, pillar_a_loss, pillar_b_loss)
+    pdf_report = generate_margin_pdf(analysis_data, anomaly_rows, packaging_rows, capital_trap_skus, courier_provider, volumetric_divisor, pillar_a_loss, pillar_b_loss, currency_prefix)
     c1, c2, c3 = st.columns(3)
     c1.download_button("Download PDF Blueprint", pdf_report, "Margin_Diagnostic_Recovery_Blueprint.pdf", "application/pdf", use_container_width=True, help="Downloads the white-background PDF report with three pillar chapters and zebra-striped tables.")
     c2.download_button("Download Full Diagnostic CSV", analysis_data.to_csv(index=False).encode("utf-8"), "full_margin_diagnostic.csv", "text/csv", use_container_width=True, help="Exports every cleaned and calculated row with all pillar flags.")
@@ -902,19 +988,19 @@ with summary_tab:
 
     with st.expander("Skipped Dirty-Data Rows"):
         st.caption("Rows shown here were not used in pillar calculations because critical numeric data was missing or invalid.")
-        st.dataframe(skipped_rows, use_container_width=True, hide_index=True)
+        st.dataframe(display_currency_columns(skipped_rows, currency_symbol), use_container_width=True, hide_index=True)
     st.subheader("Full Cleaned Diagnostic Data")
-    st.dataframe(analysis_data, use_container_width=True, hide_index=True)
+    st.dataframe(display_currency_columns(analysis_data, currency_symbol), use_container_width=True, hide_index=True)
 
 with anomaly_tab:
     st.subheader("Pillar A: Invoice & Billing Anomalies")
     with st.expander("ELI5: What does this mean and why should I care?", expanded=True):
         st.write("This tab finds orders where the courier bill looks suspicious. If a parcel weighs 1kg but the courier bills it like it takes up the space of 5kg or more, you may be paying an unfair 'empty air' tax. These rows are your dispute list.")
     cols = ["Order_ID", "SKU", "Province", "Actual_Weight_KG", "Billed_Vol_KG", "Anomaly_Reason", "Recoverable_Overcharge_ZAR", "Billed_Cost_ZAR"]
-    st.dataframe(anomaly_rows[[col for col in cols if col in anomaly_rows.columns]], use_container_width=True, hide_index=True)
+    st.dataframe(display_currency_columns(anomaly_rows[[col for col in cols if col in anomaly_rows.columns]], currency_symbol), use_container_width=True, hide_index=True)
     st.download_button(
         "Export Dispute Pack",
-        generate_dispute_pack_xlsx(anomaly_rows),
+        generate_dispute_pack_xlsx(anomaly_rows, currency_symbol, currency_prefix),
         "courier_dispute_pack.xlsx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=True,
@@ -926,10 +1012,11 @@ with packaging_tab:
     with st.expander("ELI5: What does this mean and why should I care?", expanded=True):
         st.write("This tab separates single-item mistakes from mixed-basket mistakes. A single t-shirt in a big box should become a flyer rule. For multi-item orders, we do not guess a box; we check whether the courier's billed size is bigger than all products combined plus a fair 20% packing buffer.")
     cols = ["Order_ID", "SKU", "Is_Multi_Item", "Packaging_Reason", "Recommended_Package", "Billed_Vol_KG", "Optimized_Vol_KG", "Avoidable_Volumetric_Leak_ZAR"]
-    st.dataframe(packaging_rows[[col for col in cols if col in packaging_rows.columns]], use_container_width=True, hide_index=True)
+    st.dataframe(display_currency_columns(packaging_rows[[col for col in cols if col in packaging_rows.columns]], currency_symbol), use_container_width=True, hide_index=True)
     if not packaging_rows.empty:
-        by_reason = packaging_rows.groupby("Packaging_Reason", as_index=False)["Avoidable_Volumetric_Leak_ZAR"].sum()
-        st.plotly_chart(px.pie(by_reason, names="Packaging_Reason", values="Avoidable_Volumetric_Leak_ZAR", color_discrete_sequence=px.colors.qualitative.Safe, template="plotly_white"), use_container_width=True)
+        avoidable_column = f"Avoidable_Volumetric_Leak_{currency_symbol}"
+        by_reason = display_currency_columns(packaging_rows, currency_symbol).groupby("Packaging_Reason", as_index=False)[avoidable_column].sum()
+        st.plotly_chart(px.pie(by_reason, names="Packaging_Reason", values=avoidable_column, color_discrete_sequence=px.colors.qualitative.Safe, template="plotly_white"), use_container_width=True)
     st.download_button("Download Packaging Leak CSV", packaging_rows.to_csv(index=False).encode("utf-8"), "packaging_leak_rows.csv", "text/csv", help="Exports single-item flyer opportunities and multi-item packaging bloat rows.")
 
 if consultant_password == "pixie":
@@ -969,10 +1056,10 @@ I just finished running the historical logistics audit on the dataset you sent o
 
 I wanted to get straight to the numbers. The engine flagged two major structural leaks in your current shipping setup:
 
-1. Courier Glitches: I have isolated exactly R{total_recoverable:,.2f} in pure courier overcharges from last month. I've attached the Dispute Pack—you can forward this straight to your account manager to get that cash credited back.
-2. Packaging Bloat: We found that oversized packaging, specifically on orders containing the {worst_sku}, is triggering an additional R{total_avoidable:,.2f} in unnecessary volumetric penalties.
+1. Courier Glitches: I have isolated exactly {format_currency(total_recoverable, currency_prefix)} in pure courier overcharges from last month. I've attached the Dispute Pack—you can forward this straight to your account manager to get that cash credited back.
+2. Packaging Bloat: We found that oversized packaging, specifically on orders containing the {worst_sku}, is triggering an additional {format_currency(total_avoidable, currency_prefix)} in unnecessary volumetric penalties.
 
-If we annualize these figures, {company_for_pitch} is quietly losing over R{annualized_loss:,.2f} this year just to un-optimized dispatch logistics.
+If we annualize these figures, {company_for_pitch} is quietly losing over {format_currency(annualized_loss, currency_prefix)} this year just to un-optimized dispatch logistics.
 
 I’d love to jump on a quick 15-minute Google Meet this week to walk you through the visual dashboard and show you exactly how to plug these holes.
 
@@ -988,7 +1075,9 @@ with velocity_tab:
     v1.metric("A-Class SKUs", f"{sku_summary[sku_summary['Velocity_Class'].eq('A')]['SKU'].nunique():,}", help="Highest-frequency SKUs. These usually deserve stock protection and fast fulfillment.")
     v2.metric("B-Class SKUs", f"{sku_summary[sku_summary['Velocity_Class'].eq('B')]['SKU'].nunique():,}", help="Middle-frequency SKUs. Monitor these for movement up or down.")
     v3.metric("C-Class SKUs", f"{sku_summary[sku_summary['Velocity_Class'].eq('C')]['SKU'].nunique():,}", help="Bottom 30% of SKUs by order frequency. These may be dead-stock or slow-moving inventory.")
-    st.dataframe(sku_summary, use_container_width=True, hide_index=True)
+    st.dataframe(display_currency_columns(sku_summary, currency_symbol), use_container_width=True, hide_index=True)
     if not sku_summary.empty:
-        st.plotly_chart(px.treemap(sku_summary, path=["Velocity_Class", "SKU"], values="SKU_Total_Shipping_Cost_ZAR", color="SKU_Order_Frequency", color_continuous_scale="Blues", template="plotly_white"), use_container_width=True)
+        shipping_cost_column = f"SKU_Total_Shipping_Cost_{currency_symbol}"
+        sku_chart_data = display_currency_columns(sku_summary, currency_symbol)
+        st.plotly_chart(px.treemap(sku_chart_data, path=["Velocity_Class", "SKU"], values=shipping_cost_column, color="SKU_Order_Frequency", color_continuous_scale="Blues", template="plotly_white"), use_container_width=True)
     st.download_button("Download SKU Velocity CSV", sku_summary.to_csv(index=False).encode("utf-8"), "sku_velocity_matrix.csv", "text/csv", help="Exports ABC velocity classes and shipping-cost exposure by SKU.")
