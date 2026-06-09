@@ -7,6 +7,7 @@ import pandas as pd
 import pdfplumber
 import plotly.express as px
 import streamlit as st
+from aramex_html_processor import clean_selected_table, select_shipment_table
 from fpdf import FPDF
 from supabase import create_client
 
@@ -265,13 +266,16 @@ def fits_in_package(item_dims, package_dims):
 
 def clean_packaging_matrix(packaging_matrix):
     matrix = packaging_matrix.copy()
-    matrix = matrix.dropna(subset=["Package", "L", "W", "H", "cost"])
+    required_columns = ["Package", "L", "W", "H", "cost"]
+    for col in required_columns:
+        if col not in matrix.columns:
+            matrix[col] = pd.NA
     for col in ["L", "W", "H", "cost"]:
         matrix[col] = pd.to_numeric(matrix[col], errors="coerce")
-    matrix = matrix.dropna(subset=["L", "W", "H", "cost"])
+    matrix = matrix.dropna(subset=required_columns)
     matrix = matrix[(matrix["L"] > 0) & (matrix["W"] > 0) & (matrix["H"] > 0)]
     matrix["Volume_cm3"] = matrix["L"] * matrix["W"] * matrix["H"]
-    return matrix.sort_values("Volume_cm3")
+    return matrix.sort_values("Volume_cm3").reset_index(drop=True)
 
 
 def run_single_item_repack(row, packaging_matrix, penalty_rate, divisor):
@@ -289,27 +293,35 @@ def run_single_item_repack(row, packaging_matrix, penalty_rate, divisor):
         "Avoidable_Volumetric_Leak_ZAR": 0.0,
     }
 
-    if actual_weight <= 0 or billed_vol <= 0 or any(dim <= 0 for dim in item_dims):
-        return {**base, "Packaging_Reason": "Missing or invalid single-item dimensions/weight."}
+    try:
+        if actual_weight <= 0 or billed_vol <= 0 or any(dim <= 0 for dim in item_dims):
+            return {**base, "Packaging_Reason": "Missing or invalid single-item dimensions/weight."}
 
-    for _, package in clean_packaging_matrix(packaging_matrix).iterrows():
-        usable_factor = 0.85 if bool(package.get("Fragile/Void Fill Required", False)) else 1.0
-        package_dims = [package["L"] * usable_factor, package["W"] * usable_factor, package["H"] * usable_factor]
-        if fits_in_package(item_dims, package_dims):
-            package_name = str(package["Package"])
-            optimized_vol = (package["L"] * package["W"] * package["H"]) / max(divisor, 1)
-            optimized_billed_weight = max(actual_weight, optimized_vol)
-            optimized_penalty = max(0, optimized_billed_weight - actual_weight) * penalty_rate
-            net_savings = max(0, current_penalty - optimized_penalty - safe_float(package["cost"]))
-            flyer_fit = bool(FLYER_PATTERN.search(package_name))
-            return {
-                "Packaging_Flag": flyer_fit and net_savings > 0,
-                "Packaging_Reason": "Single-item order fits into a standard flyer." if flyer_fit and net_savings > 0 else "Fits smaller packaging but no net flyer leak after material cost.",
-                "Recommended_Package": package_name,
-                "Optimized_Vol_KG": optimized_vol,
-                "Avoidable_Volumetric_Leak_ZAR": net_savings if flyer_fit else 0.0,
-            }
-    return base
+        if packaging_matrix.empty:
+            return {**base, "Packaging_Reason": "Packaging matrix has no valid numeric package rows."}
+
+        for _, package in packaging_matrix.iterrows():
+            usable_factor = 0.85 if bool(package.get("Fragile/Void Fill Required", False)) else 1.0
+            package_dims = [safe_float(package["L"]) * usable_factor, safe_float(package["W"]) * usable_factor, safe_float(package["H"]) * usable_factor]
+            if fits_in_package(item_dims, package_dims):
+                package_name = str(package["Package"])
+                optimized_vol = (safe_float(package["L"]) * safe_float(package["W"]) * safe_float(package["H"])) / max(divisor, 1)
+                optimized_billed_weight = max(actual_weight, optimized_vol)
+                optimized_penalty = max(0, optimized_billed_weight - actual_weight) * penalty_rate
+                net_savings = max(0, current_penalty - optimized_penalty - safe_float(package["cost"]))
+                flyer_fit = bool(FLYER_PATTERN.search(package_name))
+                return {
+                    "Packaging_Flag": flyer_fit and net_savings > 0,
+                    "Packaging_Reason": "Single-item order fits into a standard flyer." if flyer_fit and net_savings > 0 else "Fits smaller packaging but no net flyer leak after material cost.",
+                    "Recommended_Package": package_name,
+                    "Optimized_Vol_KG": optimized_vol,
+                    "Avoidable_Volumetric_Leak_ZAR": net_savings if flyer_fit else 0.0,
+                }
+        return {**base, "Packaging_Reason": "No configured package fits this order; marked as custom/oversized.", "Recommended_Package": "Custom/Oversized"}
+    except Exception as exc:
+        order_id = row.get("Order_ID", "unknown")
+        st.warning(f"Packaging calculation failed for row {row.name} / order {order_id}: {exc}")
+        return {**base, "Packaging_Reason": f"Packaging calculation error: {exc}", "Recommended_Package": "Review manually"}
 
 
 def classify_velocity(data):
@@ -341,6 +353,7 @@ def classify_velocity(data):
 
 def run_triple_pillar_engine(raw_data, packaging_matrix, penalty_rate, volumetric_divisor, negotiated_divisor):
     data = clean_and_standardize_data(raw_data)
+    cleaned_packaging_matrix = clean_packaging_matrix(packaging_matrix)
     valid = data[~data["Data_Quality_Issue"]].copy()
     skipped = data[data["Data_Quality_Issue"]].copy()
 
@@ -386,12 +399,17 @@ def run_triple_pillar_engine(raw_data, packaging_matrix, penalty_rate, volumetri
 
     single_mask = ~valid["Is_Multi_Item"]
     if single_mask.any():
-        single_results = valid.loc[single_mask].apply(
-            lambda row: run_single_item_repack(row, packaging_matrix, penalty_rate, negotiated_divisor), axis=1
-        )
-        for idx, result in single_results.items():
-            for key, value in result.items():
-                valid.at[idx, key] = value
+        try:
+            single_results = valid.loc[single_mask].apply(
+                lambda row: run_single_item_repack(row, cleaned_packaging_matrix, penalty_rate, negotiated_divisor), axis=1
+            )
+            for idx, result in single_results.items():
+                for key, value in result.items():
+                    valid.at[idx, key] = value
+        except Exception as exc:
+            st.error(f"Packaging optimization failed before completion: {exc}")
+            valid.loc[single_mask, "Packaging_Reason"] = f"Packaging optimization failed: {exc}"
+            valid.loc[single_mask, "Recommended_Package"] = "Review manually"
 
     multi_orders = (
         valid[valid["Is_Multi_Item"]]
@@ -453,6 +471,41 @@ def extract_pdf_rows(pdf_source):
     return pd.DataFrame(rows)
 
 
+def extract_html_rows(file_source):
+    try:
+        tables = pd.read_html(file_source)
+    except ValueError as exc:
+        raise ValueError("No HTML tables found in the uploaded file.") from exc
+    except Exception as exc:
+        raise ValueError(f"Could not parse uploaded HTML file: {exc}") from exc
+
+    if not tables:
+        raise ValueError("No HTML tables found in the uploaded file.")
+
+    debug_rows = []
+    for index, table in enumerate(tables):
+        score, matched_columns = score_table_for_display(table)
+        debug_rows.append(f"table {index}: score={score}, shape={table.shape}, matched={matched_columns}")
+    st.caption("HTML table scan: " + " | ".join(debug_rows[:6]))
+    if len(debug_rows) > 6:
+        st.caption(f"HTML table scan found {len(debug_rows)} tables; showing first 6 in the caption.")
+
+    selected_table = select_shipment_table(tables)
+    cleaned = clean_selected_table(selected_table)
+    if cleaned.empty:
+        raise ValueError("HTML file was parsed, but the selected shipment table produced no usable rows.")
+    return cleaned
+
+
+def score_table_for_display(table):
+    try:
+        from aramex_html_processor import score_table
+
+        return score_table(table)
+    except Exception as exc:
+        return 0, [f"score failed: {exc}"]
+
+
 @st.cache_data(show_spinner="Loading courier shipment data...")
 def load_data(file_name, file_bytes):
     if file_bytes is None:
@@ -465,7 +518,9 @@ def load_data(file_name, file_bytes):
         return pd.read_excel(file_buffer)
     if lower_name.endswith(".pdf"):
         return extract_pdf_rows(file_buffer)
-    raise ValueError("Unsupported file type. Upload CSV, XLSX, or PDF.")
+    if lower_name.endswith((".html", ".htm")):
+        return extract_html_rows(file_buffer)
+    raise ValueError("Unsupported file type. Upload CSV, XLSX, PDF, HTML, or HTM.")
 
 
 class MarginPDF(FPDF):
@@ -764,9 +819,9 @@ negotiated_divisor = st.sidebar.slider(
 )
 st.sidebar.divider()
 uploaded_file = st.sidebar.file_uploader(
-    "Upload courier shipment CSV, Excel, or PDF",
-    type=["csv", "xlsx", "pdf"],
-    help="Upload messy Bob Go or The Courier Guy exports. The auto-mapper will normalize chaotic column names automatically.",
+    "Upload courier shipment CSV, Excel, PDF, or HTML",
+    type=["csv", "xlsx", "pdf", "html", "htm"],
+    help="Upload messy Bob Go, The Courier Guy, or Aramex HTML exports. The auto-mapper will normalize chaotic column names automatically.",
 )
 
 selected_client_id = None
@@ -787,6 +842,8 @@ try:
     file_name = uploaded_file.name if uploaded_file else None
     file_bytes = uploaded_file.getvalue() if uploaded_file else None
     raw_data = load_data(file_name, file_bytes)
+    st.toast(f"Upload/load checkpoint complete: {len(raw_data):,} rows loaded.")
+    st.write(f"✅ Upload/load checkpoint complete: {len(raw_data):,} rows loaded from {file_name or 'mock data'}.")
 except Exception as exc:
     st.error(f"The courier file could not be loaded: {exc}")
     st.stop()
@@ -806,13 +863,22 @@ with st.expander("Packaging Matrix Configuration", expanded=False):
         },
     )
 
-analysis_data, skipped_rows, sku_summary = run_triple_pillar_engine(
-    raw_data,
-    packaging_matrix,
-    excess_penalty_per_kg,
-    volumetric_divisor,
-    negotiated_divisor,
-)
+st.toast("Packaging checkpoint: starting packaging and diagnostic calculations.")
+st.write("⏳ Packaging checkpoint: starting packaging and diagnostic calculations...")
+try:
+    analysis_data, skipped_rows, sku_summary = run_triple_pillar_engine(
+        raw_data,
+        packaging_matrix,
+        excess_penalty_per_kg,
+        volumetric_divisor,
+        negotiated_divisor,
+    )
+    st.toast(f"Packaging checkpoint complete: {len(analysis_data):,} valid rows analysed.")
+    st.write(f"✅ Packaging checkpoint complete: {len(analysis_data):,} valid rows analysed.")
+except Exception as exc:
+    st.error(f"Diagnostic engine failed: {exc}")
+    st.exception(exc)
+    raise
 
 if analysis_data.empty:
     st.error("No valid rows remained after dirty-data cleanup. Check that the file contains weight, billed volumetric weight, cost, and dimensions.")

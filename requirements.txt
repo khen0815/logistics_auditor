@@ -8,3 +8,6 @@ fpdf2
 supabase
 markdown2
 weasyprint
+lxml
+html5lib
+beautifulsoup4
