@@ -629,10 +629,14 @@ def calculate_financial_anomalies(df):
         tracking_col = find_standard_column(working, ["Tracking_Number", "HAWB", "Shipper Ref.", "Shipper Ref", "Waybill", "Waybill Number", "Tracking Number", "Order_ID"])
         shipper_ref_col = find_standard_column(working, ["Shipper Ref.", "Shipper Ref", "Shipper Reference", "Reference"])
         destination_col = find_standard_column(working, ["Destination", "Destination City", "Receiver City", "Consignee City", "Province"])
+        start_town_col = "Start Town" if "Start Town" in working.columns else None
+        service_col = "Srv" if "Srv" in working.columns else None
 
         working["Tracking_Number"] = working[tracking_col].apply(lambda value: safe_text(value, "")) if tracking_col else ""
         working["Shipper_Ref"] = working[shipper_ref_col].apply(lambda value: safe_text(value, "")) if shipper_ref_col else ""
         working["Destination"] = working[destination_col].apply(lambda value: safe_text(value, "")) if destination_col else ""
+        working["Start Town"] = working[start_town_col].apply(lambda value: safe_text(value, "")) if start_town_col else ""
+        working["Srv"] = working[service_col].apply(lambda value: safe_text(value, "")) if service_col else ""
         working["Financial_Other_Charges_ZAR"] = clean_money_series(working[other_col]) if other_col else 0.0
         working["Financial_Base_Charge_ZAR"] = clean_money_series(working[base_col]) if base_col else 0.0
         working["Financial_Weight_KG"] = clean_numeric_series(working[weight_col]) if weight_col else 0.0
@@ -669,10 +673,19 @@ def calculate_financial_anomalies(df):
         comparable = comparable[(comparable["Financial_Weight_KG"] > 0) & (comparable["cost"] > 0)].copy()
 
         if len(comparable) > 1:
-            comparable["Financial_Weight_Bucket"] = comparable["Financial_Weight_KG"].round(3)
-            comparable = comparable.dropna(subset=["Financial_Weight_Bucket"])
+            comparable["weight"] = comparable["Financial_Weight_KG"].round(3)
+            group_cols = ["Destination", "Srv", "weight"]
+            if start_town_col:
+                group_cols.insert(0, "Start Town")
+            comparable = comparable.dropna(subset=group_cols)
+            comparable = comparable[(comparable["Destination"] != "") & (comparable["Srv"] != "")].copy()
+            if start_town_col:
+                comparable = comparable[comparable["Start Town"] != ""].copy()
 
-            for _, group in comparable.groupby("Financial_Weight_Bucket", dropna=True):
+            for _, group in comparable.groupby(group_cols, dropna=True):
+                if len(group) <= 1:
+                    continue
+
                 valid_costs = pd.to_numeric(group.get("cost", pd.Series(dtype=float)), errors="coerce").dropna()
                 valid_costs = valid_costs[valid_costs > 0]
                 if len(valid_costs) <= 1:
@@ -682,7 +695,7 @@ def calculate_financial_anomalies(df):
                     mode_values = valid_costs.mode(dropna=True)
                     baseline_cost = mode_values.iloc[0] if not mode_values.empty else valid_costs.median()
                     if pd.isna(baseline_cost) or baseline_cost <= 0:
-                        raise ValueError("invalid same-weight baseline cost")
+                        raise ValueError("invalid strict-route baseline cost")
 
                     excess_base = (valid_costs - baseline_cost).clip(lower=0)
                     routing_spike = (excess_base > 50) & (valid_costs > baseline_cost * 1.5)
@@ -695,7 +708,7 @@ def calculate_financial_anomalies(df):
 
                     routing_rows = working.loc[routing_indexes].copy()
                     routing_rows["Financial_Anomaly_Flag"] = True
-                    routing_rows["Financial_Anomaly_Reason"] = "Same-weight shipment has unusually high Base Charge; possible routing/service misclassification."
+                    routing_rows["Financial_Anomaly_Reason"] = "Shipment has unusually high Base Charge versus identical route, service, and weight group."
                     routing_rows["Financial_Excess_ZAR"] = excess_base.loc[routing_indexes]
                     anomaly_frames.append(routing_rows)
                 except ValueError:
