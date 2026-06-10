@@ -1143,23 +1143,31 @@ if supabase is not None:
     audit_month = st.sidebar.text_input("Audit Month", value="June", help="Month label used when saving this audit to the CRM.")
     audit_year = st.sidebar.number_input("Audit Year", min_value=2020, max_value=2100, value=2026, step=1, help="Year label used when saving this audit to the CRM.")
 
-is_skynet_pipeline = courier_provider == "Skynet"
+selected_provider = courier_provider.lower()
+is_skynet_pipeline = "skynet" in selected_provider
+is_standard_pipeline = "courier guy" in selected_provider or "aramex" in selected_provider or "bob go" in selected_provider or "custom" in selected_provider
 
 try:
     file_name = uploaded_file.name if uploaded_file else None
     if is_skynet_pipeline:
+        st.info("Routing through dedicated Skynet processing engine...")
         if uploaded_file is None:
             st.error("Upload a Skynet Excel file before running the Skynet financial-only pipeline.")
             st.stop()
         raw_data = process_skynet_file(uploaded_file)
-    else:
+    elif is_standard_pipeline:
+        st.info("Routing through standard volumetric processing engine...")
         file_bytes = uploaded_file.getvalue() if uploaded_file else None
         raw_data = load_data(file_name, file_bytes)
         raw_data.attrs["pipeline"] = "generic"
+    else:
+        st.warning("Please select a supported courier provider from the sidebar.")
+        st.stop()
     st.toast(f"Upload/load checkpoint complete: {len(raw_data):,} rows loaded.")
     st.write(f"✅ Upload/load checkpoint complete: {len(raw_data):,} rows loaded from {file_name or 'mock data'}.")
 except Exception as exc:
-    st.error(f"The courier file could not be loaded: {exc}")
+    pipeline_name = "Skynet" if is_skynet_pipeline else "Standard"
+    st.error(f"{pipeline_name} Pipeline Error: {exc}")
     st.stop()
 
 with st.expander("Packaging Matrix Configuration", expanded=False):
