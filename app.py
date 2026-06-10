@@ -324,6 +324,172 @@ def run_single_item_repack(row, packaging_matrix, penalty_rate, divisor):
         return {**base, "Packaging_Reason": f"Packaging calculation error: {exc}", "Recommended_Package": "Review manually"}
 
 
+def find_standard_column(df, aliases):
+    normalized_lookup = {normalize_label(column): column for column in df.columns}
+    for alias in aliases:
+        normalized_alias = normalize_label(alias)
+        if normalized_alias in normalized_lookup:
+            return normalized_lookup[normalized_alias]
+    for column in df.columns:
+        normalized_column = normalize_label(column)
+        if any(normalize_label(alias) in normalized_column for alias in aliases):
+            return column
+    return None
+
+
+def generate_client_summary(df, anomalies_df):
+    shipment_count = len(df)
+    if anomalies_df is None or anomalies_df.empty:
+        return (
+            f"Courier audit complete: {shipment_count:,} shipments were reviewed.\n\n"
+            "No material financial or weight anomalies were detected in the current ruleset. "
+            "This means the file did not show surcharge spikes or same-weight base-charge mismatches above the configured thresholds."
+        )
+
+    financial_recovery = safe_float(anomalies_df.get("Financial_Excess_ZAR", pd.Series(dtype=float)).sum())
+    weight_recovery = safe_float(anomalies_df.get("Recoverable_Overcharge_ZAR", pd.Series(dtype=float)).sum())
+    total_recovery = financial_recovery + weight_recovery
+
+    if "Financial_Excess_ZAR" in anomalies_df.columns and anomalies_df["Financial_Excess_ZAR"].notna().any():
+        largest = anomalies_df.sort_values("Financial_Excess_ZAR", ascending=False).iloc[0]
+        largest_amount = safe_float(largest.get("Financial_Excess_ZAR", 0))
+    else:
+        largest = anomalies_df.iloc[0]
+        largest_amount = safe_float(largest.get("Recoverable_Overcharge_ZAR", 0))
+
+    weight = safe_float(largest.get("Financial_Weight_KG", largest.get("Actual_Weight_KG", 0)))
+    destination = safe_text(largest.get("Destination", largest.get("Province", "Unknown destination")), "Unknown destination")
+    reason = safe_text(largest.get("Financial_Anomaly_Reason", largest.get("Anomaly_Reason", "unexplained courier charge")), "unexplained courier charge")
+
+    return (
+        f"Courier audit complete: {shipment_count:,} shipments were reviewed.\n\n"
+        f"The audit identified {format_currency(total_recovery, currency_prefix)} in potential margin recovery across financial, routing, and weight anomalies.\n\n"
+        f"The largest anomaly was a {weight:.2f} kg package to {destination} that incurred an unexplained surcharge/excess charge of {format_currency(largest_amount, currency_prefix)}. "
+        f"Reason flagged: {reason}\n\n"
+        "Recommended next step: query these rows with the courier account manager and request supporting charge/routing evidence for each flagged shipment."
+    )
+
+
+def calculate_financial_anomalies(df):
+    """Find financial anomalies with hard guards around every sparse-array calculation."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    try:
+        working = df.copy()
+        other_col = find_standard_column(working, ["Other Charges", "Other Charge", "Surcharge", "Surcharges", "Additional Charge"])
+        base_col = find_standard_column(working, ["cost", "Cost", "Base Charge", "Base", "Basic Charge", "Freight Charge", "Billed_Cost_ZAR", "Financial_Base_Charge_ZAR"])
+        weight_col = find_standard_column(working, ["weight", "Weight", "Actual_Weight_KG", "Actual Weight", "Charged weight", "Billed_Weight_KG", "Financial_Weight_KG"])
+        tracking_col = find_standard_column(working, ["Tracking_Number", "HAWB", "Shipper Ref.", "Shipper Ref", "Waybill", "Waybill Number", "Tracking Number", "Order_ID"])
+        shipper_ref_col = find_standard_column(working, ["Shipper Ref.", "Shipper Ref", "Shipper Reference", "Reference"])
+        destination_col = find_standard_column(working, ["Destination", "Destination City", "Receiver City", "Consignee City", "Province"])
+        start_town_col = "Start Town" if "Start Town" in working.columns else None
+        service_col = "Srv" if "Srv" in working.columns else None
+
+        working["Tracking_Number"] = working[tracking_col].apply(lambda value: safe_text(value, "")) if tracking_col else ""
+        working["Shipper_Ref"] = working[shipper_ref_col].apply(lambda value: safe_text(value, "")) if shipper_ref_col else ""
+        working["Destination"] = working[destination_col].apply(lambda value: safe_text(value, "")) if destination_col else ""
+        working["Start Town"] = working[start_town_col].apply(lambda value: safe_text(value, "")) if start_town_col else ""
+        working["Srv"] = working[service_col].apply(lambda value: safe_text(value, "")) if service_col else ""
+        working["Financial_Other_Charges_ZAR"] = clean_money_series(working[other_col]) if other_col else 0.0
+        working["Financial_Base_Charge_ZAR"] = clean_money_series(working[base_col]) if base_col else 0.0
+        working["Financial_Weight_KG"] = clean_numeric_series(working[weight_col]) if weight_col else 0.0
+        working["cost"] = pd.to_numeric(working["Financial_Base_Charge_ZAR"], errors="coerce")
+
+        anomaly_frames = []
+
+        valid_other = pd.to_numeric(working["Financial_Other_Charges_ZAR"], errors="coerce").dropna()
+        valid_other = valid_other[valid_other > 0]
+        if len(valid_other) > 1:
+            try:
+                median_other = valid_other.median()
+                std_other = valid_other.std()
+                if pd.isna(median_other):
+                    raise ValueError("empty other-charge median")
+                statistical_threshold = median_other + (3 * std_other) if pd.notna(std_other) and std_other > 0 else median_other
+                other_threshold = max(50, statistical_threshold)
+                all_other = pd.to_numeric(working["Financial_Other_Charges_ZAR"], errors="coerce").fillna(0.0)
+                other_spike = all_other > other_threshold
+                if other_spike.any():
+                    spike_rows = working.loc[other_spike].copy()
+                    spike_rows["Financial_Anomaly_Flag"] = True
+                    spike_rows["Financial_Anomaly_Reason"] = "Other Charges spike above normal dataset threshold."
+                    spike_rows["Financial_Excess_ZAR"] = (all_other.loc[other_spike] - max(median_other, 0)).clip(lower=0)
+                    anomaly_frames.append(spike_rows)
+            except ValueError:
+                pass
+            except Exception:
+                pass
+
+        comparable = working.copy()
+        comparable["Financial_Weight_KG"] = pd.to_numeric(comparable["Financial_Weight_KG"], errors="coerce")
+        comparable["cost"] = pd.to_numeric(comparable["cost"], errors="coerce")
+        comparable = comparable[(comparable["Financial_Weight_KG"] > 0) & (comparable["cost"] > 0)].copy()
+
+        if len(comparable) > 1:
+            comparable["weight"] = comparable["Financial_Weight_KG"].round(3)
+            group_cols = ["Destination", "Srv", "weight"]
+            if start_town_col:
+                group_cols.insert(0, "Start Town")
+            comparable = comparable.dropna(subset=group_cols)
+            comparable = comparable[(comparable["Destination"] != "") & (comparable["Srv"] != "")].copy()
+            if start_town_col:
+                comparable = comparable[comparable["Start Town"] != ""].copy()
+
+            for _, group in comparable.groupby(group_cols, dropna=True):
+                if len(group) <= 1:
+                    continue
+
+                valid_costs = pd.to_numeric(group.get("cost", pd.Series(dtype=float)), errors="coerce").dropna()
+                valid_costs = valid_costs[valid_costs > 0]
+                if len(valid_costs) <= 1:
+                    continue
+
+                try:
+                    mode_values = valid_costs.mode(dropna=True)
+                    baseline_cost = mode_values.iloc[0] if not mode_values.empty else valid_costs.median()
+                    if pd.isna(baseline_cost) or baseline_cost <= 0:
+                        raise ValueError("invalid strict-route baseline cost")
+
+                    excess_base = (valid_costs - baseline_cost).clip(lower=0)
+                    routing_spike = (excess_base > 50) & (valid_costs > baseline_cost * 1.5)
+                    if not routing_spike.any():
+                        continue
+
+                    routing_indexes = valid_costs.index[routing_spike]
+                    if routing_indexes.empty:
+                        continue
+
+                    routing_rows = working.loc[routing_indexes].copy()
+                    routing_rows["Financial_Anomaly_Flag"] = True
+                    routing_rows["Financial_Anomaly_Reason"] = "Shipment has unusually high Base Charge versus identical route, service, and weight group."
+                    routing_rows["Financial_Excess_ZAR"] = excess_base.loc[routing_indexes]
+                    anomaly_frames.append(routing_rows)
+                except ValueError:
+                    continue
+                except Exception:
+                    continue
+
+        if not anomaly_frames:
+            return pd.DataFrame()
+
+        anomaly_rows = pd.concat(anomaly_frames, ignore_index=False, sort=False)
+        if anomaly_rows.empty:
+            return pd.DataFrame()
+
+        anomaly_rows = (
+            anomaly_rows.sort_values("Financial_Excess_ZAR", ascending=False)
+            .drop_duplicates(subset=["Tracking_Number", "Financial_Anomaly_Reason", "Financial_Excess_ZAR"], keep="first")
+            .reset_index(drop=True)
+        )
+        priority_cols = ["Tracking_Number", "Destination", "Shipper_Ref"]
+        remaining_cols = [col for col in anomaly_rows.columns if col not in priority_cols]
+        return anomaly_rows[[col for col in priority_cols if col in anomaly_rows.columns] + remaining_cols]
+    except Exception as exc:
+        st.warning(f"Financial anomaly calculation skipped safely: {exc}")
+        return pd.DataFrame()
+
+
 def classify_velocity(data):
     sku_summary = (
         data.groupby("SKU", as_index=False)
