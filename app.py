@@ -41,15 +41,29 @@ NUMERIC_COLUMNS = [
     "Height_cm",
 ]
 
+REQUIRED_AUDIT_COLUMNS = [
+    "Actual_Weight_KG",
+    "Billed_Cost_ZAR",
+]
+
+OPTIONAL_NUMERIC_DEFAULTS = {
+    "Billed_Vol_KG": 0,
+    "Length_cm": 0,
+    "Width_cm": 0,
+    "Height_cm": 0,
+}
+
 COLUMN_SYNONYMS = {
     "Order_ID": [
         "order id", "order_id", "order no", "order number", "order", "waybill", "waybill no",
-        "waybill number", "tracking", "tracking number", "shipment id", "parcel id", "reference",
+        "waybill number", "hawb", "hawb no", "hawb number", "tracking", "tracking number",
+        "shipment id", "parcel id", "reference",
     ],
     "SKU": ["sku", "product", "product code", "item", "item code", "description", "product description"],
     "Province": ["province", "destination province", "dest province", "region", "zone", "destination", "ship province"],
     "Actual_Weight_KG": [
         "actual kg", "actual weight", "actual weight kg", "actual_weight_kg", "wgt", "weight", "weight kg",
+        "charged weight", "charged weight kg", "charged wt", "charged wt kg",
         "mass", "actual mass", "dead weight", "scale weight", "parcel weight", "submitted weight kg",
     ],
     "Billed_Vol_KG": [
@@ -60,7 +74,7 @@ COLUMN_SYNONYMS = {
     "Billed_Cost_ZAR": [
         "billed amount", "cost zar", "billed cost", "billed cost zar", "amount", "charge", "shipping cost",
         "shipping cost zar", "billed shipping cost", "billed shipping cost zar", "total", "invoice amount",
-        "courier cost", "freight charge", "charged rate incl vat",
+        "courier cost", "freight charge", "charged rate incl vat", "rate", "cost", "amount",
     ],
     "Length_cm": ["l", "len", "length", "length cm", "length (cm)", "length_cm", "parcel length"],
     "Width_cm": ["w", "wid", "width", "width cm", "width (cm)", "width_cm", "parcel width"],
@@ -73,6 +87,26 @@ BOB_GO_DIRECT_MAPPINGS = {
     "submitted weight kg": "Actual_Weight_KG",
     "charged weight kg": "Billed_Vol_KG",
     "charged rate incl vat": "Billed_Cost_ZAR",
+}
+
+FORCED_UPLOAD_RENAME = {
+    "Wb No": "Tracking_Number",
+    "HAWB": "Tracking_Number",
+    "Destination Town": "Destination",
+    "Destination": "Destination",
+    "Mass Charged": "weight",
+    "Tot KG": "weight",
+    "Exc Vat": "cost",
+    "Base Charge": "cost",
+    "Dimensions": "dimensions",
+}
+
+FLEXIBLE_COURIER_MAPPINGS = {
+    "Tracking_Number": ["wb no", "hawb"],
+    "Destination": ["destination town", "destination"],
+    "weight": ["mass charged", "tot kg"],
+    "cost": ["exc vat", "base charge"],
+    "dimensions": ["dimensions"],
 }
 
 BOB_GO_DIMENSION_PATTERN = re.compile(
@@ -120,6 +154,11 @@ def build_alias_lookup():
 
 
 ALIAS_LOOKUP = build_alias_lookup()
+FLEXIBLE_COURIER_LOOKUP = {
+    normalize_label(alias): standard_name
+    for standard_name, aliases in FLEXIBLE_COURIER_MAPPINGS.items()
+    for alias in aliases
+}
 
 
 def parse_numeric(value):
@@ -178,6 +217,7 @@ def display_currency_columns(df, currency_symbol):
             "Estimated_Loss_ZAR": f"Estimated_Loss_{currency_symbol}",
             "Recoverable_Overcharge_ZAR": f"Recoverable_Overcharge_{currency_symbol}",
             "Avoidable_Volumetric_Leak_ZAR": f"Avoidable_Volumetric_Leak_{currency_symbol}",
+            "Financial_Excess_ZAR": f"Financial_Excess_{currency_symbol}",
             "SKU_Total_Shipping_Cost_ZAR": f"SKU_Total_Shipping_Cost_{currency_symbol}",
             "SKU_Total_Leakage_ZAR": f"SKU_Total_Leakage_{currency_symbol}",
             "Multi_Item_Leak_ZAR": f"Multi_Item_Leak_{currency_symbol}",
@@ -185,9 +225,210 @@ def display_currency_columns(df, currency_symbol):
     )
 
 
+def parse_numeric_or_zero(value):
+    """Convert messy weights/currency to float while tolerating blanks, NaN, and pd.NA."""
+    if pd.isna(value):
+        return 0.0
+    cleaned = re.sub(r"[^0-9.\-]", "", str(value).replace("\n", " ").strip())
+    if cleaned in {"", "-", "."}:
+        return 0.0
+    numeric_value = pd.to_numeric(cleaned, errors="coerce")
+    return float(numeric_value) if pd.notna(numeric_value) else 0.0
+
+
+def clean_numeric_series(series):
+    """Vector-safe numeric cleanup for Excel/PDF exports with page breaks and blank cells."""
+    cleaned = (
+        series
+        .fillna("")
+        .astype(str)
+        .str.replace("\n", " ", regex=False)
+        .str.replace(r"[^0-9.\-]", "", regex=True)
+    )
+    return pd.to_numeric(cleaned, errors="coerce").fillna(0.0).astype(float)
+
+
+def clean_money_series(series):
+    return clean_numeric_series(series)
+
+
+def apply_bouncer_bypass(df):
+    """Inject legacy strict-cleanup columns immediately after courier header renaming."""
+    bypassed = df.copy()
+    bypassed.columns = bypassed.columns.astype(str).str.strip()
+
+    if "weight" not in bypassed.columns:
+        bypassed["weight"] = bypassed["Actual_Weight_KG"] if "Actual_Weight_KG" in bypassed.columns else 0.0
+    if "cost" not in bypassed.columns:
+        bypassed["cost"] = bypassed["Billed_Cost_ZAR"] if "Billed_Cost_ZAR" in bypassed.columns else 0.0
+    if "billed volumetric weight" not in bypassed.columns:
+        bypassed["billed volumetric weight"] = bypassed["Billed_Vol_KG"] if "Billed_Vol_KG" in bypassed.columns else 0.0
+    if "dimensions" not in bypassed.columns:
+        bypassed["dimensions"] = bypassed["Dimensions"] if "Dimensions" in bypassed.columns else 0.0
+
+    bypassed["weight"] = pd.to_numeric(bypassed["weight"], errors="coerce").fillna(0.0)
+    bypassed["cost"] = pd.to_numeric(bypassed["cost"], errors="coerce").fillna(0.0)
+    bypassed["billed volumetric weight"] = pd.to_numeric(bypassed["billed volumetric weight"], errors="coerce").fillna(0.0)
+    bypassed["dimensions"] = bypassed["dimensions"].fillna(0.0)
+    return bypassed
+
+
+def normalize_courier_export_columns(df):
+    """Force courier-specific upload headers into the app's standard working variables."""
+    cleaned = df.copy().dropna(how="all")
+    cleaned.columns = cleaned.columns.astype(str).str.strip()
+    cleaned = cleaned.dropna(axis=1, how="all")
+
+    exact_rename = {column: FORCED_UPLOAD_RENAME[column] for column in cleaned.columns if column in FORCED_UPLOAD_RENAME}
+    cleaned = cleaned.rename(columns=exact_rename)
+
+    flexible_rename = {}
+    used_targets = set(exact_rename.values())
+    for column in cleaned.columns:
+        if column in used_targets:
+            continue
+        normalized = normalize_label(column)
+        target = FLEXIBLE_COURIER_LOOKUP.get(normalized)
+        if target and target not in used_targets:
+            flexible_rename[column] = target
+            used_targets.add(target)
+    cleaned = cleaned.rename(columns=flexible_rename)
+
+    cleaned = apply_bouncer_bypass(cleaned)
+
+    if "Tracking_Number" in cleaned.columns:
+        cleaned["HAWB"] = cleaned.get("HAWB", cleaned["Tracking_Number"])
+        cleaned["Order_ID"] = cleaned.get("Order_ID", cleaned["Tracking_Number"])
+        cleaned["Waybill_ID"] = cleaned.get("Waybill_ID", cleaned["Tracking_Number"])
+    if "Destination" in cleaned.columns:
+        cleaned["Province"] = cleaned.get("Province", cleaned["Destination"])
+    if "weight" in cleaned.columns:
+        cleaned["Actual_Weight_KG"] = cleaned.get("Actual_Weight_KG", cleaned["weight"])
+    if "cost" in cleaned.columns:
+        cleaned["Billed_Cost_ZAR"] = cleaned.get("Billed_Cost_ZAR", cleaned["cost"])
+    if "dimensions" in cleaned.columns:
+        cleaned["Dimensions"] = cleaned.get("Dimensions", cleaned["dimensions"])
+
+    return cleaned
+
+
+def process_skynet_file(uploaded_file):
+    """Surgically process Skynet Excel exports for the financial anomaly engine only."""
+    preview = pd.read_excel(uploaded_file, header=None, nrows=15)
+    header_index = None
+    for index, row in preview.iterrows():
+        row_text = " ".join(str(value).replace(" ", " ").strip() for value in row.dropna().tolist())
+        if re.search(r"\b(Wb\s*No|Tot\s*KG)\b", row_text, re.I):
+            header_index = index
+            break
+
+    if header_index is None:
+        raise ValueError("Could not find Skynet header row containing Wb No or Tot KG.")
+
+    uploaded_file.seek(0)
+    df = pd.read_excel(uploaded_file, header=header_index)
+    df.columns = (
+        df.columns.astype(str)
+        .str.replace(" ", " ", regex=False)
+        .str.replace(r"\s+", " ", regex=True)
+        .str.strip()
+    )
+    df = df.dropna(how="all").dropna(axis=1, how="all")
+
+    column_index = pd.Index(df.columns)
+
+    def first_column_containing(pattern):
+        matches = column_index[column_index.str.contains(pattern, case=False, na=False, regex=True)]
+        return matches[0] if len(matches) else None
+
+    tracking_col = first_column_containing(r"\bWb\b")
+    destination_col = first_column_containing("Destination")
+    weight_col = first_column_containing("Mass") or first_column_containing(r"Tot\s*KG")
+    cost_col = first_column_containing("Vat")
+
+    missing = [
+        name
+        for name, column in {
+            "Tracking_Number": tracking_col,
+            "Destination": destination_col,
+            "weight": weight_col,
+            "cost": cost_col,
+        }.items()
+        if column is None
+    ]
+    if missing:
+        raise ValueError(f"Skynet file is missing required columns after partial matching: {', '.join(missing)}")
+
+    df = df.rename(
+        columns={
+            tracking_col: "Tracking_Number",
+            destination_col: "Destination",
+            weight_col: "weight",
+            cost_col: "cost",
+        }
+    )
+
+    df["weight"] = pd.to_numeric(df["weight"], errors="coerce").astype(float)
+    df["cost"] = pd.to_numeric(df["cost"], errors="coerce").astype(float)
+    df = df[df["cost"].notna() & (df["cost"] > 0.0)].copy()
+    df["weight"] = df["weight"].fillna(0.0)
+    df["cost"] = df["cost"].fillna(0.0)
+
+    df["Financial_Weight_KG"] = df["weight"]
+    df["Financial_Base_Charge_ZAR"] = df["cost"]
+    df["Financial_Other_Charges_ZAR"] = 0.0
+    df["Order_ID"] = df["Tracking_Number"].fillna(pd.Series([f"SKYNET-{i + 1}" for i in range(len(df))], index=df.index))
+    df["Waybill_ID"] = df["Order_ID"]
+    df["Province"] = df["Destination"].fillna("Unknown")
+    df["SKU"] = "Skynet Shipment"
+    df["Actual_Weight_KG"] = df["weight"]
+    df["Billed_Cost_ZAR"] = df["cost"]
+    df["Billed_Vol_KG"] = 0.0
+    df["Length_cm"] = 0.0
+    df["Width_cm"] = 0.0
+    df["Height_cm"] = 0.0
+    df.attrs["pipeline"] = "skynet_financial_only"
+    return df.reset_index(drop=True)
+
+
+def read_excel_with_dynamic_header(file_buffer, scan_rows=15):
+    """Find the real courier export header row below invoice/letterhead rows."""
+    preview = pd.read_excel(file_buffer, header=None, nrows=scan_rows)
+    header_index = None
+    header_markers = re.compile(r"\b(HAWB|Weight|Wb\s*No|Tot\s*KG)\b", re.I)
+    for index, row in preview.iterrows():
+        row_text = " ".join(str(value) for value in row.dropna().tolist())
+        if header_markers.search(row_text):
+            header_index = index
+            break
+
+    file_buffer.seek(0)
+    if header_index is None:
+        st.warning("Could not auto-detect an Excel header row containing HAWB, Weight, Wb No, or Tot KG; falling back to the second row as headers.")
+        header_index = 1
+    else:
+        st.caption(f"Excel header detected at row {header_index + 1}; skipped {header_index} letterhead/metadata row(s).")
+
+    data = pd.read_excel(file_buffer, header=header_index)
+    data.columns = data.columns.astype(str).str.strip()
+    data.rename(
+        columns={
+            "Wb No": "Tracking_Number",
+            "Mass Charged": "weight",
+            "Exc Vat": "cost",
+            "Destination Town": "Destination",
+        },
+        inplace=True,
+    )
+    data = apply_bouncer_bypass(data)
+    data = data[(data["weight"] > 0.0) & (data["cost"] > 0.0)].copy()
+    data = data.dropna(how="all").dropna(axis=1, how="all")
+    return normalize_courier_export_columns(data)
+
+
 def clean_and_standardize_data(df):
-    """Map messy courier exports into a deterministic standard schema without crashing on bad rows."""
-    cleaned = df.copy()
+    """Normalize courier data while only rejecting rows with missing/zero weight or cost."""
+    cleaned = normalize_courier_export_columns(df)
     cleaned.columns = [str(col).strip() for col in cleaned.columns]
 
     bob_go_dimensions_col = next((col for col in ["Charged dimensions", "Submitted dimensions"] if col in cleaned.columns), None)
@@ -202,58 +443,63 @@ def clean_and_standardize_data(df):
     rename_map = {}
     used_standard_names = set()
     for original in cleaned.columns:
+        if original in {"Tracking_Number", "Destination", "weight", "cost", "dimensions"}:
+            continue
         normalized = normalize_label(original)
         standard = BOB_GO_DIRECT_MAPPINGS.get(normalized) or ALIAS_LOOKUP.get(normalized)
-        if standard and standard not in used_standard_names:
+        if standard and standard not in used_standard_names and standard not in cleaned.columns:
             rename_map[original] = standard
             used_standard_names.add(standard)
     cleaned = cleaned.rename(columns=rename_map)
 
-    try:
-        if bob_go_parsed is not None:
-            for col in ["Waybill_ID", "Length_cm", "Width_cm", "Height_cm"]:
-                if col not in cleaned.columns:
-                    cleaned[col] = bob_go_parsed[col]
-                else:
-                    cleaned[col] = cleaned[col].combine_first(bob_go_parsed[col])
-            if "Order_ID" not in cleaned.columns:
-                cleaned["Order_ID"] = cleaned["Waybill_ID"]
-            else:
-                cleaned["Order_ID"] = cleaned["Order_ID"].combine_first(cleaned["Waybill_ID"])
+    cleaned = apply_bouncer_bypass(cleaned)
 
-        if "Dimensions" in cleaned.columns:
-            parsed_dims = cleaned["Dimensions"].apply(parse_dimensions)
-            if "Length_cm" not in cleaned.columns:
-                cleaned["Length_cm"] = parsed_dims.apply(lambda dims: dims[0] if dims else pd.NA)
-            if "Width_cm" not in cleaned.columns:
-                cleaned["Width_cm"] = parsed_dims.apply(lambda dims: dims[1] if dims else pd.NA)
-            if "Height_cm" not in cleaned.columns:
-                cleaned["Height_cm"] = parsed_dims.apply(lambda dims: dims[2] if dims else pd.NA)
+    if "Tracking_Number" in cleaned.columns:
+        cleaned["Order_ID"] = cleaned.get("Order_ID", cleaned["Tracking_Number"])
+        cleaned["Waybill_ID"] = cleaned.get("Waybill_ID", cleaned["Tracking_Number"])
+    if "Destination" in cleaned.columns:
+        cleaned["Province"] = cleaned.get("Province", cleaned["Destination"])
+    cleaned["Actual_Weight_KG"] = cleaned.get("Actual_Weight_KG", cleaned["weight"])
+    cleaned["Billed_Cost_ZAR"] = cleaned.get("Billed_Cost_ZAR", cleaned["cost"])
+    cleaned["Billed_Vol_KG"] = cleaned.get("Billed_Vol_KG", cleaned["billed volumetric weight"])
+    cleaned["Dimensions"] = cleaned.get("Dimensions", cleaned["dimensions"])
 
-        for col in STANDARD_COLUMNS:
-            if col not in cleaned.columns:
-                cleaned[col] = pd.NA
+    if bob_go_parsed is not None:
+        for col in ["Waybill_ID", "Length_cm", "Width_cm", "Height_cm"]:
+            cleaned[col] = cleaned[col].combine_first(bob_go_parsed[col]) if col in cleaned.columns else bob_go_parsed[col]
+        cleaned["Order_ID"] = cleaned.get("Order_ID", cleaned["Waybill_ID"]).combine_first(cleaned["Waybill_ID"])
 
-        cleaned["Order_ID"] = cleaned["Order_ID"].fillna(pd.Series([f"ROW-{i + 1}" for i in range(len(cleaned))], index=cleaned.index))
-        cleaned["SKU"] = cleaned["SKU"].fillna("Unknown SKU")
-        cleaned["Province"] = cleaned["Province"].fillna("Unknown")
+    if "Dimensions" in cleaned.columns:
+        parsed_dims = cleaned["Dimensions"].apply(parse_dimensions)
+        if "Length_cm" not in cleaned.columns:
+            cleaned["Length_cm"] = parsed_dims.apply(lambda dims: dims[0] if dims else pd.NA)
+        if "Width_cm" not in cleaned.columns:
+            cleaned["Width_cm"] = parsed_dims.apply(lambda dims: dims[1] if dims else pd.NA)
+        if "Height_cm" not in cleaned.columns:
+            cleaned["Height_cm"] = parsed_dims.apply(lambda dims: dims[2] if dims else pd.NA)
 
-        for col in NUMERIC_COLUMNS:
-            cleaned[col] = cleaned[col].apply(parse_numeric)
+    for col in STANDARD_COLUMNS:
+        if col not in cleaned.columns:
+            cleaned[col] = pd.NA
 
-        cleaned["Data_Quality_Issue"] = cleaned[NUMERIC_COLUMNS].isna().any(axis=1)
-        cleaned["Data_Quality_Note"] = cleaned.apply(
-            lambda row: "Missing critical numeric courier data; row skipped from pillar math."
-            if row["Data_Quality_Issue"] else "OK",
-            axis=1,
-        )
-    except Exception as exc:
-        st.warning(f"Some dirty-data cleanup failed gracefully and affected rows were marked for review: {exc}")
-        for col in STANDARD_COLUMNS:
-            if col not in cleaned.columns:
-                cleaned[col] = pd.NA
-        cleaned["Data_Quality_Issue"] = True
-        cleaned["Data_Quality_Note"] = "Cleanup exception; row requires manual review."
+    cleaned["Order_ID"] = cleaned["Order_ID"].fillna(pd.Series([f"ROW-{i + 1}" for i in range(len(cleaned))], index=cleaned.index))
+    cleaned["Waybill_ID"] = cleaned["Waybill_ID"].fillna(cleaned["Order_ID"])
+    cleaned["SKU"] = cleaned["SKU"].fillna("Unknown SKU")
+    cleaned["Province"] = cleaned["Province"].fillna("Unknown")
+
+    cleaned["Actual_Weight_KG"] = clean_numeric_series(cleaned["Actual_Weight_KG"])
+    cleaned["Billed_Cost_ZAR"] = clean_money_series(cleaned["Billed_Cost_ZAR"])
+    for col in ["Billed_Vol_KG", "Length_cm", "Width_cm", "Height_cm"]:
+        cleaned[col] = clean_numeric_series(cleaned[col]) if col in cleaned.columns else 0.0
+
+    cleaned["Billed_Vol_KG"] = cleaned["Billed_Vol_KG"].fillna(0.0)
+    for col in ["Length_cm", "Width_cm", "Height_cm"]:
+        cleaned[col] = cleaned[col].fillna(0.0)
+
+    missing_weight_or_cost = (cleaned["Actual_Weight_KG"] <= 0) | (cleaned["Billed_Cost_ZAR"] <= 0)
+    cleaned["Data_Quality_Issue"] = missing_weight_or_cost
+    cleaned["Data_Quality_Note"] = "OK"
+    cleaned.loc[missing_weight_or_cost, "Data_Quality_Note"] = "Missing or zero weight/cost; row skipped from audit math."
 
     return cleaned
 
@@ -324,6 +570,146 @@ def run_single_item_repack(row, packaging_matrix, penalty_rate, divisor):
         return {**base, "Packaging_Reason": f"Packaging calculation error: {exc}", "Recommended_Package": "Review manually"}
 
 
+def find_standard_column(df, aliases):
+    normalized_lookup = {normalize_label(column): column for column in df.columns}
+    for alias in aliases:
+        normalized_alias = normalize_label(alias)
+        if normalized_alias in normalized_lookup:
+            return normalized_lookup[normalized_alias]
+    for column in df.columns:
+        normalized_column = normalize_label(column)
+        if any(normalize_label(alias) in normalized_column for alias in aliases):
+            return column
+    return None
+
+
+def generate_client_summary(df, anomalies_df):
+    shipment_count = len(df)
+    if anomalies_df is None or anomalies_df.empty:
+        return (
+            f"Courier audit complete: {shipment_count:,} shipments were reviewed.\n\n"
+            "No material financial or weight anomalies were detected in the current ruleset. "
+            "This means the file did not show surcharge spikes or same-weight base-charge mismatches above the configured thresholds."
+        )
+
+    financial_recovery = safe_float(anomalies_df.get("Financial_Excess_ZAR", pd.Series(dtype=float)).sum())
+    weight_recovery = safe_float(anomalies_df.get("Recoverable_Overcharge_ZAR", pd.Series(dtype=float)).sum())
+    total_recovery = financial_recovery + weight_recovery
+
+    if "Financial_Excess_ZAR" in anomalies_df.columns and anomalies_df["Financial_Excess_ZAR"].notna().any():
+        largest = anomalies_df.sort_values("Financial_Excess_ZAR", ascending=False).iloc[0]
+        largest_amount = safe_float(largest.get("Financial_Excess_ZAR", 0))
+    else:
+        largest = anomalies_df.iloc[0]
+        largest_amount = safe_float(largest.get("Recoverable_Overcharge_ZAR", 0))
+
+    weight = safe_float(largest.get("Financial_Weight_KG", largest.get("Actual_Weight_KG", 0)))
+    destination = safe_text(largest.get("Destination", largest.get("Province", "Unknown destination")), "Unknown destination")
+    reason = safe_text(largest.get("Financial_Anomaly_Reason", largest.get("Anomaly_Reason", "unexplained courier charge")), "unexplained courier charge")
+
+    return (
+        f"Courier audit complete: {shipment_count:,} shipments were reviewed.\n\n"
+        f"The audit identified {format_currency(total_recovery, currency_prefix)} in potential margin recovery across financial, routing, and weight anomalies.\n\n"
+        f"The largest anomaly was a {weight:.2f} kg package to {destination} that incurred an unexplained surcharge/excess charge of {format_currency(largest_amount, currency_prefix)}. "
+        f"Reason flagged: {reason}\n\n"
+        "Recommended next step: query these rows with the courier account manager and request supporting charge/routing evidence for each flagged shipment."
+    )
+
+
+def calculate_financial_anomalies(df):
+    """Find surcharge spikes and same-weight routing/base-charge inconsistencies without crashing on sparse groups."""
+    if df is None or df.empty:
+        return pd.DataFrame()
+
+    try:
+        working = df.copy()
+        other_col = find_standard_column(working, ["Other Charges", "Other Charge", "Surcharge", "Surcharges", "Additional Charge"])
+        base_col = find_standard_column(working, ["Base Charge", "Base", "Basic Charge", "Freight Charge", "Cost", "cost", "Billed_Cost_ZAR"])
+        weight_col = find_standard_column(working, ["Weight", "weight", "Actual_Weight_KG", "Actual Weight", "Charged weight", "Billed_Weight_KG"])
+        tracking_col = find_standard_column(working, ["Tracking_Number", "HAWB", "Shipper Ref.", "Shipper Ref", "Waybill", "Waybill Number", "Tracking Number", "Order_ID"])
+        shipper_ref_col = find_standard_column(working, ["Shipper Ref.", "Shipper Ref", "Shipper Reference", "Reference"])
+        destination_col = find_standard_column(working, ["Destination", "Destination City", "Receiver City", "Consignee City", "Province"])
+
+        working["Tracking_Number"] = working[tracking_col].apply(lambda value: safe_text(value, "")) if tracking_col else ""
+        working["Shipper_Ref"] = working[shipper_ref_col].apply(lambda value: safe_text(value, "")) if shipper_ref_col else ""
+        if destination_col:
+            working["Destination"] = working[destination_col].apply(lambda value: safe_text(value, ""))
+        elif "Destination" not in working.columns:
+            working["Destination"] = ""
+
+        working["Financial_Other_Charges_ZAR"] = clean_money_series(working[other_col]) if other_col else 0.0
+        working["Financial_Base_Charge_ZAR"] = clean_money_series(working[base_col]) if base_col else 0.0
+        working["Financial_Weight_KG"] = clean_numeric_series(working[weight_col]) if weight_col else 0.0
+
+        working["Financial_Anomaly_Flag"] = False
+        working["Financial_Anomaly_Reason"] = ""
+        working["Financial_Excess_ZAR"] = 0.0
+
+        other_charges = pd.to_numeric(working["Financial_Other_Charges_ZAR"], errors="coerce").fillna(0.0)
+        positive_other = other_charges[other_charges > 0]
+        if len(positive_other) > 1:
+            median_other = positive_other.median()
+            std_other = positive_other.std()
+            statistical_threshold = median_other + (3 * std_other) if pd.notna(std_other) and std_other > 0 else median_other
+            other_threshold = max(50, statistical_threshold)
+            other_spike = other_charges > other_threshold
+
+            working.loc[other_spike, "Financial_Anomaly_Flag"] = True
+            working.loc[other_spike, "Financial_Anomaly_Reason"] = "Other Charges spike above normal dataset threshold."
+            working.loc[other_spike, "Financial_Excess_ZAR"] += (other_charges[other_spike] - max(median_other, 0)).clip(lower=0)
+
+        comparable = working[
+            (pd.to_numeric(working["Financial_Weight_KG"], errors="coerce") > 0)
+            & (pd.to_numeric(working["Financial_Base_Charge_ZAR"], errors="coerce") > 0)
+        ].copy()
+
+        if len(comparable) > 1:
+            comparable["Financial_Weight_Bucket"] = comparable["Financial_Weight_KG"].round(3)
+
+            for _, group in comparable.groupby("Financial_Weight_Bucket"):
+                if len(group) <= 1:
+                    continue
+
+                costs = pd.to_numeric(group["Financial_Base_Charge_ZAR"], errors="coerce").dropna()
+                costs = costs[costs > 0]
+                if costs.empty or len(costs) <= 1:
+                    continue
+
+                try:
+                    mode_values = costs.mode(dropna=True)
+                    baseline_cost = mode_values.iloc[0] if not mode_values.empty else costs.median()
+                except Exception:
+                    baseline_cost = costs.median()
+
+                if pd.isna(baseline_cost) or baseline_cost <= 0:
+                    continue
+
+                excess_base = (costs - baseline_cost).clip(lower=0)
+                routing_spike = (excess_base > 50) & (costs > baseline_cost * 1.5)
+                routing_indexes = costs.index[routing_spike]
+                if routing_indexes.empty:
+                    continue
+
+                working.loc[routing_indexes, "Financial_Anomaly_Flag"] = True
+                existing_reasons = working.loc[routing_indexes, "Financial_Anomaly_Reason"].astype(str)
+                working.loc[routing_indexes, "Financial_Anomaly_Reason"] = existing_reasons.where(
+                    existing_reasons.eq(""),
+                    existing_reasons + " ",
+                ) + "Same-weight shipment has unusually high Base Charge; possible routing/service misclassification."
+                working.loc[routing_indexes, "Financial_Excess_ZAR"] += excess_base.loc[routing_indexes]
+
+        anomaly_rows = working[working["Financial_Anomaly_Flag"]].sort_values("Financial_Excess_ZAR", ascending=False).reset_index(drop=True)
+        if anomaly_rows.empty:
+            return pd.DataFrame()
+
+        priority_cols = ["Tracking_Number", "Destination", "Shipper_Ref"]
+        remaining_cols = [col for col in anomaly_rows.columns if col not in priority_cols]
+        return anomaly_rows[[col for col in priority_cols if col in anomaly_rows.columns] + remaining_cols]
+    except Exception as exc:
+        st.warning(f"Financial anomaly calculation skipped safely: {exc}")
+        return pd.DataFrame()
+
+
 def classify_velocity(data):
     sku_summary = (
         data.groupby("SKU", as_index=False)
@@ -352,7 +738,12 @@ def classify_velocity(data):
 
 
 def run_triple_pillar_engine(raw_data, packaging_matrix, penalty_rate, volumetric_divisor, negotiated_divisor):
-    data = clean_and_standardize_data(raw_data)
+    if raw_data.attrs.get("pipeline") == "skynet_financial_only":
+        data = raw_data.copy()
+        data["Data_Quality_Issue"] = False
+        data["Data_Quality_Note"] = "Skynet financial-only pipeline; legacy cleanup bypassed."
+    else:
+        data = clean_and_standardize_data(raw_data)
     cleaned_packaging_matrix = clean_packaging_matrix(packaging_matrix)
     valid = data[~data["Data_Quality_Issue"]].copy()
     skipped = data[data["Data_Quality_Issue"]].copy()
@@ -515,7 +906,11 @@ def load_data(file_name, file_bytes):
     if lower_name.endswith(".csv"):
         return pd.read_csv(file_buffer, sep=None, engine="python", encoding="utf-8-sig")
     if lower_name.endswith(".xlsx"):
-        return pd.read_excel(file_buffer)
+        try:
+            return process_skynet_file(file_buffer)
+        except ValueError:
+            file_buffer.seek(0)
+            return read_excel_with_dynamic_header(file_buffer)
     if lower_name.endswith(".pdf"):
         return extract_pdf_rows(file_buffer)
     if lower_name.endswith((".html", ".htm")):
@@ -894,8 +1289,11 @@ capital_trap_skus = sku_summary[
     & (sku_summary["SKU_Distant_Zone_Lines"] > 0)
 ].sort_values("SKU_Total_Shipping_Cost_ZAR", ascending=False)
 
+financial_anomaly_rows = calculate_financial_anomalies(raw_data)
 pillar_a_loss = anomaly_rows["Recoverable_Overcharge_ZAR"].sum()
 pillar_b_loss = packaging_rows["Avoidable_Volumetric_Leak_ZAR"].sum()
+financial_anomaly_loss = financial_anomaly_rows["Financial_Excess_ZAR"].sum() if not financial_anomaly_rows.empty else 0
+client_summary_anomalies = pd.concat([financial_anomaly_rows, anomaly_rows], ignore_index=True, sort=False)
 capital_trap_count = analysis_data["Capital_Trap_Flag"].sum()
 multi_item_orders = analysis_data[analysis_data["Is_Multi_Item"]]["Order_ID"].nunique()
 
@@ -1020,10 +1418,10 @@ if consultant_password == "pixie":
 k1, k2, k3, k4 = st.columns(4)
 k1.metric("Pillar A: Courier Recoverable", format_currency(pillar_a_loss, currency_prefix), f"{len(anomaly_rows):,} rows", help="Money potentially recoverable from courier billing anomalies such as extreme billed volumetric weight or impossible dimensions.")
 k2.metric("Pillar B: Packaging Leak", format_currency(pillar_b_loss, currency_prefix), f"{len(packaging_rows):,} rows", help="Avoidable warehouse-side leakage from single-item flyer opportunities and multi-item packaging bloat.")
-k3.metric("Pillar C: Capital Traps", f"{int(capital_trap_count):,}", "flagged lines", help="C-Class low-velocity SKUs that also incur high shipping costs to distant or remote zones.")
-k4.metric("Mixed-Basket Orders", f"{multi_item_orders:,}", "multi-item", help="Calculates the combined physical volume of all items in a single order plus a 20% buffer for packaging material.")
+k3.metric("Financial & Routing", format_currency(financial_anomaly_loss, currency_prefix), f"{len(financial_anomaly_rows):,} rows", help="Surcharge spikes and same-weight shipments with unusually high base charges.")
+k4.metric("Pillar C: Capital Traps", f"{int(capital_trap_count):,}", "flagged lines", help="C-Class low-velocity SKUs that also incur high shipping costs to distant or remote zones.")
 
-summary_tab, anomaly_tab, packaging_tab, velocity_tab = st.tabs(["Executive Summary", "Courier Anomalies", "Packaging Leaks", "SKU Velocity"])
+summary_tab, anomaly_tab, financial_tab, packaging_tab, velocity_tab = st.tabs(["Executive Summary", "Courier Anomalies", "Financial & Routing", "Packaging Leaks", "SKU Velocity"])
 
 with summary_tab:
     st.subheader("Executive Summary")
@@ -1031,7 +1429,7 @@ with summary_tab:
         f"""
         <div class="info-card">
         The engine standardized <b>{len(raw_data):,}</b> raw courier rows and retained <b>{len(analysis_data):,}</b> rows for deterministic pillar analysis.
-        Total direct leakage identified is <b>{format_currency(pillar_a_loss + pillar_b_loss, currency_prefix)}</b>, split into courier-dispute exposure and warehouse packaging exposure.
+        Total direct leakage identified is <b>{format_currency(pillar_a_loss + pillar_b_loss + financial_anomaly_loss, currency_prefix)}</b>, split into courier-dispute exposure, financial/routing anomalies, and warehouse packaging exposure.
         </div>
         """,
         unsafe_allow_html=True,
@@ -1039,9 +1437,14 @@ with summary_tab:
     leakage_column = f"Leakage_{currency_symbol}"
     chart_data = pd.DataFrame([
         {"Pillar": "A: Courier Billing Anomalies", leakage_column: pillar_a_loss},
+        {"Pillar": "Financial & Routing Anomalies", leakage_column: financial_anomaly_loss},
         {"Pillar": "B: Packaging Inefficiency", leakage_column: pillar_b_loss},
     ])
     st.plotly_chart(px.bar(chart_data, x="Pillar", y=leakage_column, text_auto=".2s", color="Pillar", color_discrete_sequence=["#2563eb", "#16a34a"], template="plotly_white"), use_container_width=True)
+
+    st.subheader("Client Email Summary")
+    st.info(generate_client_summary(raw_data, client_summary_anomalies))
+    st.code(generate_client_summary(raw_data, client_summary_anomalies), language="text")
 
     pdf_report = generate_margin_pdf(analysis_data, anomaly_rows, packaging_rows, capital_trap_skus, courier_provider, volumetric_divisor, pillar_a_loss, pillar_b_loss, currency_prefix)
     c1, c2, c3 = st.columns(3)
@@ -1072,6 +1475,25 @@ with anomaly_tab:
         use_container_width=True,
         help="Downloads a professional Excel dispute pack containing only flagged courier overcharges.",
     )
+
+with financial_tab:
+    st.subheader("Financial & Routing Anomalies")
+    with st.expander("ELI5: What does this mean and why should I care?", expanded=True):
+        st.write("This tab catches invoice glitches that are not weight mistakes: unusual surcharge spikes and shipments with the same weight but very different base charges. These are good candidates for account-manager queries even when the physics audit shows R0.00.")
+    financial_cols = [
+        "Tracking_Number",
+        "Destination",
+        "Shipper_Ref",
+        "Order_ID",
+        "Waybill_ID",
+        "Financial_Weight_KG",
+        "Financial_Base_Charge_ZAR",
+        "Financial_Other_Charges_ZAR",
+        "Financial_Excess_ZAR",
+        "Financial_Anomaly_Reason",
+    ]
+    st.dataframe(display_currency_columns(financial_anomaly_rows[[col for col in financial_cols if col in financial_anomaly_rows.columns]], currency_symbol), use_container_width=True, hide_index=True)
+    st.download_button("Download Financial Anomalies CSV", financial_anomaly_rows.to_csv(index=False).encode("utf-8"), "financial_routing_anomalies.csv", "text/csv", help="Exports surcharge spikes and routing/base-charge anomalies.")
 
 with packaging_tab:
     st.subheader("Pillar B: Workflow & Packaging Inefficiency")
