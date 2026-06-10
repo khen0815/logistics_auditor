@@ -313,7 +313,7 @@ def normalize_courier_export_columns(df):
 
 
 def process_skynet_file(uploaded_file):
-    """Surgically process Skynet Excel exports for the financial anomaly engine only."""
+    """Read Skynet Excel exports into the exact schema used by financial anomaly detection."""
     preview = pd.read_excel(uploaded_file, header=None, nrows=15)
     header_index = None
     for index, row in preview.iterrows():
@@ -327,66 +327,26 @@ def process_skynet_file(uploaded_file):
 
     uploaded_file.seek(0)
     df = pd.read_excel(uploaded_file, header=header_index)
-    df.columns = (
-        df.columns.astype(str)
-        .str.replace(" ", " ", regex=False)
-        .str.replace(r"\s+", " ", regex=True)
-        .str.strip()
-    )
-    df = df.dropna(how="all").dropna(axis=1, how="all")
+    df.columns = df.columns.astype(str).str.strip()
+    df = df.dropna(how="all")
 
-    column_index = pd.Index(df.columns)
-
-    def first_column_containing(pattern):
-        matches = column_index[column_index.str.contains(pattern, case=False, na=False, regex=True)]
-        return matches[0] if len(matches) else None
-
-    tracking_col = first_column_containing(r"\bWb\b")
-    destination_col = first_column_containing("Destination")
-    weight_col = first_column_containing("Mass") or first_column_containing(r"Tot\s*KG")
-    cost_col = first_column_containing("Vat")
-
-    missing = [
-        name
-        for name, column in {
-            "Tracking_Number": tracking_col,
-            "Destination": destination_col,
-            "weight": weight_col,
-            "cost": cost_col,
-        }.items()
-        if column is None
-    ]
+    required_columns = {
+        "Wb No": "Tracking_Number",
+        "Start Town": "Start_Town",
+        "Destination Town": "Destination",
+        "Srv": "Service_Level",
+        "Mass Charged": "weight",
+        "Exc Vat": "cost",
+    }
+    missing = [column for column in required_columns if column not in df.columns]
     if missing:
-        raise ValueError(f"Skynet file is missing required columns after partial matching: {', '.join(missing)}")
+        raise ValueError(f"Skynet file is missing required columns: {', '.join(missing)}")
 
-    df = df.rename(
-        columns={
-            tracking_col: "Tracking_Number",
-            destination_col: "Destination",
-            weight_col: "weight",
-            cost_col: "cost",
-        }
-    )
+    df = df[list(required_columns)].rename(columns=required_columns).copy()
+    df["weight"] = pd.to_numeric(df["weight"], errors="coerce")
+    df["cost"] = pd.to_numeric(df["cost"], errors="coerce")
+    df = df[df["weight"].notna() & (df["weight"] > 0) & df["cost"].notna() & (df["cost"] > 0)].copy()
 
-    df["weight"] = pd.to_numeric(df["weight"], errors="coerce").astype(float)
-    df["cost"] = pd.to_numeric(df["cost"], errors="coerce").astype(float)
-    df = df[df["cost"].notna() & (df["cost"] > 0.0)].copy()
-    df["weight"] = df["weight"].fillna(0.0)
-    df["cost"] = df["cost"].fillna(0.0)
-
-    df["Financial_Weight_KG"] = df["weight"]
-    df["Financial_Base_Charge_ZAR"] = df["cost"]
-    df["Financial_Other_Charges_ZAR"] = 0.0
-    df["Order_ID"] = df["Tracking_Number"].fillna(pd.Series([f"SKYNET-{i + 1}" for i in range(len(df))], index=df.index))
-    df["Waybill_ID"] = df["Order_ID"]
-    df["Province"] = df["Destination"].fillna("Unknown")
-    df["SKU"] = "Skynet Shipment"
-    df["Actual_Weight_KG"] = df["weight"]
-    df["Billed_Cost_ZAR"] = df["cost"]
-    df["Billed_Vol_KG"] = 0.0
-    df["Length_cm"] = 0.0
-    df["Width_cm"] = 0.0
-    df["Height_cm"] = 0.0
     df.attrs["pipeline"] = "skynet_financial_only"
     return df.reset_index(drop=True)
 
@@ -617,123 +577,50 @@ def generate_client_summary(df, anomalies_df):
 
 
 def calculate_financial_anomalies(df):
-    """Find financial anomalies with hard guards around every sparse-array calculation."""
+    """Flag Skynet financial anomalies within identical route, service, and weight groups."""
     if df is None or df.empty:
         return pd.DataFrame()
 
-    try:
-        working = df.copy()
-        other_col = find_standard_column(working, ["Other Charges", "Other Charge", "Surcharge", "Surcharges", "Additional Charge"])
-        base_col = find_standard_column(working, ["cost", "Cost", "Base Charge", "Base", "Basic Charge", "Freight Charge", "Billed_Cost_ZAR", "Financial_Base_Charge_ZAR"])
-        weight_col = find_standard_column(working, ["weight", "Weight", "Actual_Weight_KG", "Actual Weight", "Charged weight", "Billed_Weight_KG", "Financial_Weight_KG"])
-        tracking_col = find_standard_column(working, ["Tracking_Number", "HAWB", "Shipper Ref.", "Shipper Ref", "Waybill", "Waybill Number", "Tracking Number", "Order_ID"])
-        shipper_ref_col = find_standard_column(working, ["Shipper Ref.", "Shipper Ref", "Shipper Reference", "Reference"])
-        destination_col = find_standard_column(working, ["Destination", "Destination City", "Receiver City", "Consignee City", "Province"])
-        start_town_col = "Start Town" if "Start Town" in working.columns else None
-        service_col = "Srv" if "Srv" in working.columns else None
-
-        working["Tracking_Number"] = working[tracking_col].apply(lambda value: safe_text(value, "")) if tracking_col else ""
-        working["Shipper_Ref"] = working[shipper_ref_col].apply(lambda value: safe_text(value, "")) if shipper_ref_col else ""
-        working["Destination"] = working[destination_col].apply(lambda value: safe_text(value, "")) if destination_col else ""
-        working["Start Town"] = working[start_town_col].apply(lambda value: safe_text(value, "")) if start_town_col else ""
-        working["Srv"] = working[service_col].apply(lambda value: safe_text(value, "")) if service_col else ""
-        working["Financial_Other_Charges_ZAR"] = clean_money_series(working[other_col]) if other_col else 0.0
-        working["Financial_Base_Charge_ZAR"] = clean_money_series(working[base_col]) if base_col else 0.0
-        working["Financial_Weight_KG"] = clean_numeric_series(working[weight_col]) if weight_col else 0.0
-        working["cost"] = pd.to_numeric(working["Financial_Base_Charge_ZAR"], errors="coerce")
-
-        anomaly_frames = []
-
-        valid_other = pd.to_numeric(working["Financial_Other_Charges_ZAR"], errors="coerce").dropna()
-        valid_other = valid_other[valid_other > 0]
-        if len(valid_other) > 1:
-            try:
-                median_other = valid_other.median()
-                std_other = valid_other.std()
-                if pd.isna(median_other):
-                    raise ValueError("empty other-charge median")
-                statistical_threshold = median_other + (3 * std_other) if pd.notna(std_other) and std_other > 0 else median_other
-                other_threshold = max(50, statistical_threshold)
-                all_other = pd.to_numeric(working["Financial_Other_Charges_ZAR"], errors="coerce").fillna(0.0)
-                other_spike = all_other > other_threshold
-                if other_spike.any():
-                    spike_rows = working.loc[other_spike].copy()
-                    spike_rows["Financial_Anomaly_Flag"] = True
-                    spike_rows["Financial_Anomaly_Reason"] = "Other Charges spike above normal dataset threshold."
-                    spike_rows["Financial_Excess_ZAR"] = (all_other.loc[other_spike] - max(median_other, 0)).clip(lower=0)
-                    anomaly_frames.append(spike_rows)
-            except ValueError:
-                pass
-            except Exception:
-                pass
-
-        comparable = working.copy()
-        comparable["Financial_Weight_KG"] = pd.to_numeric(comparable["Financial_Weight_KG"], errors="coerce")
-        comparable["cost"] = pd.to_numeric(comparable["cost"], errors="coerce")
-        comparable = comparable[(comparable["Financial_Weight_KG"] > 0) & (comparable["cost"] > 0)].copy()
-
-        if len(comparable) > 1:
-            comparable["weight"] = comparable["Financial_Weight_KG"].round(3)
-            group_cols = ["Destination", "Srv", "weight"]
-            if start_town_col:
-                group_cols.insert(0, "Start Town")
-            comparable = comparable.dropna(subset=group_cols)
-            comparable = comparable[(comparable["Destination"] != "") & (comparable["Srv"] != "")].copy()
-            if start_town_col:
-                comparable = comparable[comparable["Start Town"] != ""].copy()
-
-            for _, group in comparable.groupby(group_cols, dropna=True):
-                if len(group) <= 1:
-                    continue
-
-                valid_costs = pd.to_numeric(group.get("cost", pd.Series(dtype=float)), errors="coerce").dropna()
-                valid_costs = valid_costs[valid_costs > 0]
-                if len(valid_costs) <= 1:
-                    continue
-
-                try:
-                    mode_values = valid_costs.mode(dropna=True)
-                    baseline_cost = mode_values.iloc[0] if not mode_values.empty else valid_costs.median()
-                    if pd.isna(baseline_cost) or baseline_cost <= 0:
-                        raise ValueError("invalid strict-route baseline cost")
-
-                    excess_base = (valid_costs - baseline_cost).clip(lower=0)
-                    routing_spike = (excess_base > 50) & (valid_costs > baseline_cost * 1.5)
-                    if not routing_spike.any():
-                        continue
-
-                    routing_indexes = valid_costs.index[routing_spike]
-                    if routing_indexes.empty:
-                        continue
-
-                    routing_rows = working.loc[routing_indexes].copy()
-                    routing_rows["Financial_Anomaly_Flag"] = True
-                    routing_rows["Financial_Anomaly_Reason"] = "Shipment has unusually high Base Charge versus identical route, service, and weight group."
-                    routing_rows["Financial_Excess_ZAR"] = excess_base.loc[routing_indexes]
-                    anomaly_frames.append(routing_rows)
-                except ValueError:
-                    continue
-                except Exception:
-                    continue
-
-        if not anomaly_frames:
-            return pd.DataFrame()
-
-        anomaly_rows = pd.concat(anomaly_frames, ignore_index=False, sort=False)
-        if anomaly_rows.empty:
-            return pd.DataFrame()
-
-        anomaly_rows = (
-            anomaly_rows.sort_values("Financial_Excess_ZAR", ascending=False)
-            .drop_duplicates(subset=["Tracking_Number", "Financial_Anomaly_Reason", "Financial_Excess_ZAR"], keep="first")
-            .reset_index(drop=True)
-        )
-        priority_cols = ["Tracking_Number", "Destination", "Shipper_Ref"]
-        remaining_cols = [col for col in anomaly_rows.columns if col not in priority_cols]
-        return anomaly_rows[[col for col in priority_cols if col in anomaly_rows.columns] + remaining_cols]
-    except Exception as exc:
-        st.warning(f"Financial anomaly calculation skipped safely: {exc}")
+    required_columns = ["Start_Town", "Destination", "Service_Level", "weight", "cost"]
+    missing = [column for column in required_columns if column not in df.columns]
+    if missing:
+        st.warning(f"Financial anomaly calculation skipped safely: missing columns {', '.join(missing)}")
         return pd.DataFrame()
+
+    working = df.copy()
+    working["weight"] = pd.to_numeric(working["weight"], errors="coerce")
+    working["cost"] = pd.to_numeric(working["cost"], errors="coerce")
+    working = working.dropna(subset=required_columns)
+    working = working[(working["weight"] > 0) & (working["cost"] > 0)].copy()
+
+    anomaly_frames = []
+    for _, group in working.groupby(["Start_Town", "Destination", "Service_Level", "weight"], dropna=True):
+        if len(group) <= 1:
+            continue
+
+        try:
+            mode_values = group["cost"].mode(dropna=True)
+            if mode_values.empty:
+                continue
+            std_cost = mode_values.iloc[0]
+            if pd.isna(std_cost) or std_cost <= 0:
+                continue
+        except Exception:
+            continue
+
+        anomalies = group[group["cost"] > std_cost * 1.1].copy()
+        if anomalies.empty:
+            continue
+
+        anomalies["Financial_Anomaly_Flag"] = True
+        anomalies["Financial_Anomaly_Reason"] = "Cost is more than 10% above the mode for identical route, service, and weight."
+        anomalies["Financial_Excess_ZAR"] = anomalies["cost"] - std_cost
+        anomaly_frames.append(anomalies)
+
+    if not anomaly_frames:
+        return pd.DataFrame()
+
+    return pd.concat(anomaly_frames, ignore_index=True, sort=False)
 
 
 def classify_velocity(data):
