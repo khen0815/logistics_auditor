@@ -1261,8 +1261,15 @@ if supabase is not None:
 
 try:
     file_name = uploaded_file.name if uploaded_file else None
-    file_bytes = uploaded_file.getvalue() if uploaded_file else None
-    raw_data = load_data(file_name, file_bytes)
+    if uploaded_file and file_name.lower().endswith(".xlsx"):
+        try:
+            raw_data = process_skynet_file(uploaded_file)
+        except ValueError:
+            uploaded_file.seek(0)
+            raw_data = load_data(file_name, uploaded_file.getvalue())
+    else:
+        file_bytes = uploaded_file.getvalue() if uploaded_file else None
+        raw_data = load_data(file_name, file_bytes)
     st.toast(f"Upload/load checkpoint complete: {len(raw_data):,} rows loaded.")
     st.write(f"✅ Upload/load checkpoint complete: {len(raw_data):,} rows loaded from {file_name or 'mock data'}.")
 except Exception as exc:
@@ -1284,28 +1291,58 @@ with st.expander("Packaging Matrix Configuration", expanded=False):
         },
     )
 
-st.toast("Packaging checkpoint: starting packaging and diagnostic calculations.")
-st.write("⏳ Packaging checkpoint: starting packaging and diagnostic calculations...")
-try:
-    analysis_data, skipped_rows, sku_summary = run_triple_pillar_engine(
-        raw_data,
-        packaging_matrix,
-        excess_penalty_per_kg,
-        volumetric_divisor,
-        negotiated_divisor,
-    )
-    st.toast(f"Packaging checkpoint complete: {len(analysis_data):,} valid rows analysed.")
-    st.write(f"✅ Packaging checkpoint complete: {len(analysis_data):,} valid rows analysed.")
-except Exception as exc:
-    st.error(f"Diagnostic engine failed: {exc}")
-    st.exception(exc)
-    raise
+if raw_data.attrs.get("pipeline") == "skynet_financial_only":
+    st.toast("Skynet financial-only pipeline: bypassing legacy cleanup and packaging calculations.")
+    st.write("✅ Skynet financial-only pipeline: bypassing legacy dirty-data cleanup, volumetric checks, and packaging calculations.")
 
-if analysis_data.empty:
-    st.error("No valid rows remained after dirty-data cleanup. Check that the file contains weight, billed volumetric weight, cost, and dimensions.")
-    if not skipped_rows.empty:
-        st.dataframe(skipped_rows, use_container_width=True, hide_index=True)
-    st.stop()
+    analysis_data = raw_data.copy()
+    skipped_rows = pd.DataFrame()
+    sku_summary = pd.DataFrame(
+        columns=[
+            "SKU",
+            "Velocity_Class",
+            "SKU_Order_Frequency",
+            "SKU_Total_Shipping_Cost_ZAR",
+            "SKU_Distant_Zone_Lines",
+        ]
+    )
+    for column, default in {
+        "Anomaly_Flag": False,
+        "Recoverable_Overcharge_ZAR": 0.0,
+        "Packaging_Flag": False,
+        "Avoidable_Volumetric_Leak_ZAR": 0.0,
+        "Capital_Trap_Flag": False,
+        "Is_Multi_Item": False,
+    }.items():
+        if column not in analysis_data.columns:
+            analysis_data[column] = default
+
+    financial_anomaly_rows = calculate_financial_anomalies(analysis_data)
+else:
+    st.toast("Packaging checkpoint: starting packaging and diagnostic calculations.")
+    st.write("⏳ Packaging checkpoint: starting packaging and diagnostic calculations...")
+    try:
+        analysis_data, skipped_rows, sku_summary = run_triple_pillar_engine(
+            raw_data,
+            packaging_matrix,
+            excess_penalty_per_kg,
+            volumetric_divisor,
+            negotiated_divisor,
+        )
+        st.toast(f"Packaging checkpoint complete: {len(analysis_data):,} valid rows analysed.")
+        st.write(f"✅ Packaging checkpoint complete: {len(analysis_data):,} valid rows analysed.")
+    except Exception as exc:
+        st.error(f"Diagnostic engine failed: {exc}")
+        st.exception(exc)
+        raise
+
+    if analysis_data.empty:
+        st.error("No valid rows remained after dirty-data cleanup. Check that the file contains weight, billed volumetric weight, cost, and dimensions.")
+        if not skipped_rows.empty:
+            st.dataframe(skipped_rows, use_container_width=True, hide_index=True)
+        st.stop()
+
+    financial_anomaly_rows = calculate_financial_anomalies(raw_data)
 
 anomaly_rows = analysis_data[analysis_data["Anomaly_Flag"]].sort_values("Recoverable_Overcharge_ZAR", ascending=False)
 packaging_rows = analysis_data[analysis_data["Packaging_Flag"]].sort_values("Avoidable_Volumetric_Leak_ZAR", ascending=False)
@@ -1315,7 +1352,6 @@ capital_trap_skus = sku_summary[
     & (sku_summary["SKU_Distant_Zone_Lines"] > 0)
 ].sort_values("SKU_Total_Shipping_Cost_ZAR", ascending=False)
 
-financial_anomaly_rows = calculate_financial_anomalies(raw_data)
 pillar_a_loss = anomaly_rows["Recoverable_Overcharge_ZAR"].sum()
 pillar_b_loss = packaging_rows["Avoidable_Volumetric_Leak_ZAR"].sum()
 financial_anomaly_loss = financial_anomaly_rows["Financial_Excess_ZAR"].sum() if not financial_anomaly_rows.empty else 0
