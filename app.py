@@ -9,6 +9,8 @@ import plotly.express as px
 import streamlit as st
 from aramex_html_processor import clean_selected_table, select_shipment_table
 from fpdf import FPDF
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from supabase import create_client
 
 
@@ -223,6 +225,80 @@ def display_currency_columns(df, currency_symbol):
             "Multi_Item_Leak_ZAR": f"Multi_Item_Leak_{currency_symbol}",
         }
     )
+
+
+def convert_df_to_styled_excel(df):
+    """Return a professionally styled in-memory Excel export for Streamlit downloads."""
+    output = io.BytesIO()
+    export_df = df.copy() if df is not None else pd.DataFrame()
+
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        sheet_name = "Diagnostic Export"
+        export_df.to_excel(writer, index=False, sheet_name=sheet_name)
+        worksheet = writer.sheets[sheet_name]
+
+        header_fill = PatternFill("solid", fgColor="1F4E79")
+        header_font = Font(name="Calibri", bold=True, color="FFFFFF")
+        body_font = Font(name="Calibri", color="111827")
+        border_side = Side(style="thin", color="D9E2EC")
+        cell_border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+        center_columns = {
+            "Tracking_Number",
+            "Order_ID",
+            "Waybill_ID",
+            "Service_Level",
+            "Srv",
+            "Start_Town",
+        }
+        currency_columns = {
+            "cost",
+            "Billed_Cost_ZAR",
+            "Financial_Excess_ZAR",
+            "Estimated_Loss_ZAR",
+            "Recoverable_Overcharge_ZAR",
+            "Avoidable_Volumetric_Leak_ZAR",
+            "SKU_Total_Shipping_Cost_ZAR",
+            "SKU_Total_Leakage_ZAR",
+            "Multi_Item_Leak_ZAR",
+        }
+        weight_columns = {"weight", "Actual_Weight_KG", "Billed_Vol_KG", "Financial_Weight_KG", "Billed_Weight_KG", "Excess_Weight_KG"}
+
+        for cell in worksheet[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+            cell.border = cell_border
+
+        header_lookup = {cell.column: str(cell.value) for cell in worksheet[1] if cell.value is not None}
+        for row in worksheet.iter_rows(min_row=2):
+            for cell in row:
+                column_name = header_lookup.get(cell.column, "")
+                cell.font = body_font
+                cell.border = cell_border
+                cell.alignment = Alignment(
+                    horizontal="center" if column_name in center_columns else "left",
+                    vertical="center",
+                )
+                if column_name in currency_columns:
+                    cell.number_format = '"R" #,##0.00'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+                elif column_name in weight_columns:
+                    cell.number_format = '0.00" kg"'
+                    cell.alignment = Alignment(horizontal="right", vertical="center")
+
+        worksheet.freeze_panes = "A2"
+        worksheet.auto_filter.ref = worksheet.dimensions
+
+        for column_cells in worksheet.columns:
+            column_letter = get_column_letter(column_cells[0].column)
+            max_length = 0
+            for cell in column_cells:
+                value = "" if cell.value is None else str(cell.value)
+                max_length = max(max_length, len(value))
+            worksheet.column_dimensions[column_letter].width = min(max(max_length + 3, 12), 45)
+
+    output.seek(0)
+    return output.getvalue()
 
 
 def parse_numeric_or_zero(value):
@@ -1409,7 +1485,14 @@ with summary_tab:
     pdf_report = generate_margin_pdf(analysis_data, anomaly_rows, packaging_rows, capital_trap_skus, courier_provider, volumetric_divisor, pillar_a_loss, pillar_b_loss, currency_prefix)
     c1, c2, c3 = st.columns(3)
     c1.download_button("Download PDF Blueprint", pdf_report, "Margin_Diagnostic_Recovery_Blueprint.pdf", "application/pdf", use_container_width=True, help="Downloads the white-background PDF report with three pillar chapters and zebra-striped tables.")
-    c2.download_button("Download Full Diagnostic CSV", analysis_data.to_csv(index=False).encode("utf-8"), "full_margin_diagnostic.csv", "text/csv", use_container_width=True, help="Exports every cleaned and calculated row with all pillar flags.")
+    c2.download_button(
+        "Download Professional Excel",
+        convert_df_to_styled_excel(analysis_data),
+        "full_margin_diagnostic.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=True,
+        help="Exports every cleaned and calculated row as a formatted Excel workbook with frozen headers, filters, and currency/weight formatting.",
+    )
     if supabase is not None:
         if c3.button("Save Audit to CRM", disabled=selected_client_id is None, use_container_width=True, help="Saves the top-line diagnostic values to Supabase for client history tracking."):
             supabase.table("audits").insert({"client_id": selected_client_id, "audit_month": audit_month, "audit_year": int(audit_year), "total_loss_zar": float(pillar_a_loss + pillar_b_loss), "dead_stock_value_zar": float(capital_trap_skus["SKU_Total_Shipping_Cost_ZAR"].sum() if not capital_trap_skus.empty else 0)}).execute()
@@ -1453,7 +1536,13 @@ with financial_tab:
         "Financial_Anomaly_Reason",
     ]
     st.dataframe(display_currency_columns(financial_anomaly_rows[[col for col in financial_cols if col in financial_anomaly_rows.columns]], currency_symbol), use_container_width=True, hide_index=True)
-    st.download_button("Download Financial Anomalies CSV", financial_anomaly_rows.to_csv(index=False).encode("utf-8"), "financial_routing_anomalies.csv", "text/csv", help="Exports surcharge spikes and routing/base-charge anomalies.")
+    st.download_button(
+        "Download Financial Anomalies Excel",
+        convert_df_to_styled_excel(financial_anomaly_rows),
+        "financial_routing_anomalies.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Exports surcharge spikes and routing/base-charge anomalies as a styled Excel workbook.",
+    )
 
 with packaging_tab:
     st.subheader("Pillar B: Workflow & Packaging Inefficiency")
@@ -1465,7 +1554,13 @@ with packaging_tab:
         avoidable_column = f"Avoidable_Volumetric_Leak_{currency_symbol}"
         by_reason = display_currency_columns(packaging_rows, currency_symbol).groupby("Packaging_Reason", as_index=False)[avoidable_column].sum()
         st.plotly_chart(px.pie(by_reason, names="Packaging_Reason", values=avoidable_column, color_discrete_sequence=px.colors.qualitative.Safe, template="plotly_white"), use_container_width=True)
-    st.download_button("Download Packaging Leak CSV", packaging_rows.to_csv(index=False).encode("utf-8"), "packaging_leak_rows.csv", "text/csv", help="Exports single-item flyer opportunities and multi-item packaging bloat rows.")
+    st.download_button(
+        "Download Packaging Leak Excel",
+        convert_df_to_styled_excel(packaging_rows),
+        "packaging_leak_rows.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Exports single-item flyer opportunities and multi-item packaging bloat rows as a styled Excel workbook.",
+    )
 
 if consultant_password == "pixie":
     st.divider()
@@ -1528,4 +1623,10 @@ with velocity_tab:
         shipping_cost_column = f"SKU_Total_Shipping_Cost_{currency_symbol}"
         sku_chart_data = display_currency_columns(sku_summary, currency_symbol)
         st.plotly_chart(px.treemap(sku_chart_data, path=["Velocity_Class", "SKU"], values=shipping_cost_column, color="SKU_Order_Frequency", color_continuous_scale="Blues", template="plotly_white"), use_container_width=True)
-    st.download_button("Download SKU Velocity CSV", sku_summary.to_csv(index=False).encode("utf-8"), "sku_velocity_matrix.csv", "text/csv", help="Exports ABC velocity classes and shipping-cost exposure by SKU.")
+    st.download_button(
+        "Download SKU Velocity Excel",
+        convert_df_to_styled_excel(sku_summary),
+        "sku_velocity_matrix.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        help="Exports ABC velocity classes and shipping-cost exposure by SKU as a styled Excel workbook.",
+    )
