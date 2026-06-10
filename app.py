@@ -624,22 +624,20 @@ def calculate_financial_anomalies(df):
     try:
         working = df.copy()
         other_col = find_standard_column(working, ["Other Charges", "Other Charge", "Surcharge", "Surcharges", "Additional Charge"])
-        base_col = find_standard_column(working, ["Base Charge", "Base", "Basic Charge", "Freight Charge", "Cost", "cost", "Billed_Cost_ZAR"])
-        weight_col = find_standard_column(working, ["Weight", "weight", "Actual_Weight_KG", "Actual Weight", "Charged weight", "Billed_Weight_KG"])
+        base_col = find_standard_column(working, ["cost", "Cost", "Base Charge", "Base", "Basic Charge", "Freight Charge", "Billed_Cost_ZAR", "Financial_Base_Charge_ZAR"])
+        weight_col = find_standard_column(working, ["weight", "Weight", "Actual_Weight_KG", "Actual Weight", "Charged weight", "Billed_Weight_KG", "Financial_Weight_KG"])
         tracking_col = find_standard_column(working, ["Tracking_Number", "HAWB", "Shipper Ref.", "Shipper Ref", "Waybill", "Waybill Number", "Tracking Number", "Order_ID"])
         shipper_ref_col = find_standard_column(working, ["Shipper Ref.", "Shipper Ref", "Shipper Reference", "Reference"])
         destination_col = find_standard_column(working, ["Destination", "Destination City", "Receiver City", "Consignee City", "Province"])
 
         working["Tracking_Number"] = working[tracking_col].apply(lambda value: safe_text(value, "")) if tracking_col else ""
         working["Shipper_Ref"] = working[shipper_ref_col].apply(lambda value: safe_text(value, "")) if shipper_ref_col else ""
-        if destination_col:
-            working["Destination"] = working[destination_col].apply(lambda value: safe_text(value, ""))
-        elif "Destination" not in working.columns:
-            working["Destination"] = ""
+        working["Destination"] = working[destination_col].apply(lambda value: safe_text(value, "")) if destination_col else ""
 
         working["Financial_Other_Charges_ZAR"] = clean_money_series(working[other_col]) if other_col else 0.0
         working["Financial_Base_Charge_ZAR"] = clean_money_series(working[base_col]) if base_col else 0.0
         working["Financial_Weight_KG"] = clean_numeric_series(working[weight_col]) if weight_col else 0.0
+        working["cost"] = pd.to_numeric(working["Financial_Base_Charge_ZAR"], errors="coerce")
 
         working["Financial_Anomaly_Flag"] = False
         working["Financial_Anomaly_Reason"] = ""
@@ -654,39 +652,50 @@ def calculate_financial_anomalies(df):
             other_threshold = max(50, statistical_threshold)
             other_spike = other_charges > other_threshold
 
-            working.loc[other_spike, "Financial_Anomaly_Flag"] = True
-            working.loc[other_spike, "Financial_Anomaly_Reason"] = "Other Charges spike above normal dataset threshold."
-            working.loc[other_spike, "Financial_Excess_ZAR"] += (other_charges[other_spike] - max(median_other, 0)).clip(lower=0)
+            if other_spike.any():
+                working.loc[other_spike, "Financial_Anomaly_Flag"] = True
+                working.loc[other_spike, "Financial_Anomaly_Reason"] = "Other Charges spike above normal dataset threshold."
+                working.loc[other_spike, "Financial_Excess_ZAR"] += (other_charges[other_spike] - max(median_other, 0)).clip(lower=0)
 
         comparable = working[
             (pd.to_numeric(working["Financial_Weight_KG"], errors="coerce") > 0)
-            & (pd.to_numeric(working["Financial_Base_Charge_ZAR"], errors="coerce") > 0)
+            & (pd.to_numeric(working["cost"], errors="coerce") > 0)
         ].copy()
 
         if len(comparable) > 1:
-            comparable["Financial_Weight_Bucket"] = comparable["Financial_Weight_KG"].round(3)
+            comparable["Financial_Weight_Bucket"] = pd.to_numeric(
+                comparable["Financial_Weight_KG"], errors="coerce"
+            ).round(3)
 
             for _, group in comparable.groupby("Financial_Weight_Bucket"):
                 if len(group) <= 1:
                     continue
+                if "cost" not in group.columns:
+                    continue
 
-                costs = pd.to_numeric(group["Financial_Base_Charge_ZAR"], errors="coerce").dropna()
-                costs = costs[costs > 0]
-                if costs.empty or len(costs) <= 1:
+                group_costs = pd.to_numeric(group["cost"], errors="coerce").dropna()
+                group_costs = group_costs[group_costs > 0]
+                if group_costs.empty or len(group_costs) <= 1:
                     continue
 
                 try:
-                    mode_values = costs.mode(dropna=True)
-                    baseline_cost = mode_values.iloc[0] if not mode_values.empty else costs.median()
+                    mode_values = group_costs.mode(dropna=True)
+                    if mode_values.empty:
+                        baseline_cost = group_costs.median()
+                    else:
+                        baseline_cost = mode_values.iloc[0]
                 except Exception:
-                    baseline_cost = costs.median()
+                    baseline_cost = group_costs.median()
 
                 if pd.isna(baseline_cost) or baseline_cost <= 0:
                     continue
 
-                excess_base = (costs - baseline_cost).clip(lower=0)
-                routing_spike = (excess_base > 50) & (costs > baseline_cost * 1.5)
-                routing_indexes = costs.index[routing_spike]
+                excess_base = (group_costs - baseline_cost).clip(lower=0)
+                routing_spike = (excess_base > 50) & (group_costs > baseline_cost * 1.5)
+                if not routing_spike.any():
+                    continue
+
+                routing_indexes = group_costs.index[routing_spike]
                 if routing_indexes.empty:
                     continue
 
