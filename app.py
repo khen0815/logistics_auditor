@@ -819,11 +819,7 @@ def load_data(file_name, file_bytes):
     if lower_name.endswith(".csv"):
         return pd.read_csv(file_buffer, sep=None, engine="python", encoding="utf-8-sig")
     if lower_name.endswith(".xlsx"):
-        try:
-            return process_skynet_file(file_buffer)
-        except ValueError:
-            file_buffer.seek(0)
-            return read_excel_with_dynamic_header(file_buffer)
+        return read_excel_with_dynamic_header(file_buffer)
     if lower_name.endswith(".pdf"):
         return extract_pdf_rows(file_buffer)
     if lower_name.endswith((".html", ".htm")):
@@ -1092,13 +1088,14 @@ if supabase is None:
 st.sidebar.header("Courier Rate Card Configuration")
 courier_provider = st.sidebar.selectbox(
     "Courier Provider",
-    ["The Courier Guy (Divisor: 5000)", "Bob Go Aggregated (Divisor: 4000)", "Aramex (Divisor: 5000)", "Custom"],
+    ["The Courier Guy (Divisor: 5000)", "Bob Go Aggregated (Divisor: 4000)", "Aramex (Divisor: 5000)", "Skynet", "Custom"],
     help="Select the courier rate-card family. This sets the default volumetric divisor but you can still override it below.",
 )
 provider_divisors = {
     "The Courier Guy (Divisor: 5000)": 5000,
     "Bob Go Aggregated (Divisor: 4000)": 4000,
     "Aramex (Divisor: 5000)": 5000,
+    "Skynet": 5000,
     "Custom": 5000,
 }
 volumetric_divisor = st.sidebar.number_input(
@@ -1146,17 +1143,19 @@ if supabase is not None:
     audit_month = st.sidebar.text_input("Audit Month", value="June", help="Month label used when saving this audit to the CRM.")
     audit_year = st.sidebar.number_input("Audit Year", min_value=2020, max_value=2100, value=2026, step=1, help="Year label used when saving this audit to the CRM.")
 
+is_skynet_pipeline = courier_provider == "Skynet"
+
 try:
     file_name = uploaded_file.name if uploaded_file else None
-    if uploaded_file and file_name.lower().endswith(".xlsx"):
-        try:
-            raw_data = process_skynet_file(uploaded_file)
-        except ValueError:
-            uploaded_file.seek(0)
-            raw_data = load_data(file_name, uploaded_file.getvalue())
+    if is_skynet_pipeline:
+        if uploaded_file is None:
+            st.error("Upload a Skynet Excel file before running the Skynet financial-only pipeline.")
+            st.stop()
+        raw_data = process_skynet_file(uploaded_file)
     else:
         file_bytes = uploaded_file.getvalue() if uploaded_file else None
         raw_data = load_data(file_name, file_bytes)
+        raw_data.attrs["pipeline"] = "generic"
     st.toast(f"Upload/load checkpoint complete: {len(raw_data):,} rows loaded.")
     st.write(f"✅ Upload/load checkpoint complete: {len(raw_data):,} rows loaded from {file_name or 'mock data'}.")
 except Exception as exc:
@@ -1178,7 +1177,7 @@ with st.expander("Packaging Matrix Configuration", expanded=False):
         },
     )
 
-if raw_data.attrs.get("pipeline") == "skynet_financial_only":
+if is_skynet_pipeline:
     st.toast("Skynet financial-only pipeline: bypassing legacy cleanup and packaging calculations.")
     st.write("✅ Skynet financial-only pipeline: bypassing legacy dirty-data cleanup, volumetric checks, and packaging calculations.")
 
@@ -1194,6 +1193,10 @@ if raw_data.attrs.get("pipeline") == "skynet_financial_only":
         ]
     )
     for column, default in {
+        "Order_ID": analysis_data.get("Tracking_Number", pd.Series([f"SKYNET-{i + 1}" for i in range(len(analysis_data))], index=analysis_data.index)),
+        "SKU": "Skynet Shipment",
+        "Province": analysis_data.get("Destination", "Unknown"),
+        "Billed_Cost_ZAR": analysis_data.get("cost", 0.0),
         "Anomaly_Flag": False,
         "Recoverable_Overcharge_ZAR": 0.0,
         "Packaging_Flag": False,
