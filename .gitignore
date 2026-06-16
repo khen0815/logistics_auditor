@@ -6,3 +6,19 @@ env/
 .DS_Store
 .streamlit/secrets.toml
 .claude/settings.local.json
+monthly_audit_snapshots.csv
+
+# Local/generated audit inputs and outputs
+Amazon Sale Report.csv
+FFF-Shipping-Confidential-*.xlsx
+synthetic_courier_export.csv
+realistic_courier_export.csv
+
+# Generated business collateral
+GTM_Strategy_Kyle_Logistics_Auditor.html
+GTM_Strategy_Kyle_Logistics_Auditor.pdf
+Henderson_Performance_Logistics_Audit_Business_Plan.html
+Henderson_Performance_Logistics_Audit_Business_Plan.pdf
+Logistics_Auditor_Pricing_Strategy.docx
+Logistics_Margin_Diagnostic_Marketing_Strategy.docx
+Margin_Recovery_Proposal.pdf
